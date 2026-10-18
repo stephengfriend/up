@@ -220,3 +220,35 @@ fn test_supply_02_every_fixture_has_expectation() {
         );
     }
 }
+
+/// Every key in a JSON document, recursively.
+fn all_keys(v: &serde_json::Value, out: &mut Vec<String>) {
+    match v {
+        serde_json::Value::Object(map) => {
+            for (k, child) in map {
+                out.push(k.clone());
+                all_keys(child, out);
+            }
+        }
+        serde_json::Value::Array(items) => items.iter().for_each(|i| all_keys(i, out)),
+        _ => {}
+    }
+}
+
+#[test]
+fn test_supply_02_zizmor_policy_requires_hash_pins_and_has_no_ignores() {
+    let doc = up_config::yaml::load_file(&repo_root().join(".github/zizmor.yml"))
+        .expect("zizmor.yml must load");
+    assert_eq!(
+        doc["rules"]["unpinned-uses"]["config"]["policies"]["*"], "hash-pin",
+        "every action must require a hash pin"
+    );
+    let mut keys = Vec::new();
+    all_keys(&doc, &mut keys);
+    for forbidden in ["ignore", "disable", "disabled"] {
+        assert!(
+            !keys.iter().any(|k| k == forbidden),
+            "zizmor.yml must not carry `{forbidden}` entries"
+        );
+    }
+}
