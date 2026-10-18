@@ -161,6 +161,18 @@ pub fn check_license(text: &str) -> Vec<String> {
     messages
 }
 
+/// The H2 sections PUB-12 requires in SECURITY.md, in order.
+pub const SECURITY_SECTIONS: &[&str] = &[
+    "Reporting a vulnerability",
+    "Supported versions",
+    "Embargo and disclosure",
+];
+
+/// PUB-12 (stub, filled in by the GREEN commit).
+pub fn check_security_md(_text: &str) -> Vec<String> {
+    Vec::new()
+}
+
 pub fn run(ctx: &Ctx, _args: &[String]) -> CheckResult {
     let tracked = tracked_files(&ctx.root)?;
     let mut messages = check_paths(&tracked, M0_PATHS);
