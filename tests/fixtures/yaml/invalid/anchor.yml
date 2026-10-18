@@ -1,0 +1,4 @@
+# expect: anchor
+engine:
+  settings: &base
+    retries: 3

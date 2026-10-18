@@ -1,0 +1,10 @@
+# A plain mapping: nested mapping, a list of two strings and a quoted string.
+engine:
+  channel: stable
+  settings:
+    retries: 3
+    verbose: false
+items:
+  - alpha
+  - beta
+label: "quoted value"
