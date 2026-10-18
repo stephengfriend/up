@@ -356,27 +356,83 @@ pub fn ensure_tool_with(
 
     let archive = fetch_verified(&cache, name, target, asset, fetcher)?;
 
-    // Extract only now, into a directory that did not exist before.
+    let final_dir = base.join(format!("{name}-{version}-{}", &asset.sha256[..12]));
+    // A directory that carries the completion marker for this archive hash was extracted
+    // from a verified archive and checked; keep it. Venvs and running tools point into it, so
+    // it is never deleted and recreated while it is valid.
+    if install_is_valid(&final_dir, asset) {
+        return Ok(final_dir.join(&asset.bin));
+    }
+
+    // Extract only now, into a directory that did not exist before, and publish it with a
+    // single rename so a reader never sees a half-written install.
     let n = TMP_COUNTER.fetch_add(1, Ordering::Relaxed);
     let tmp = base.join(format!("tmp-{}-{n}", std::process::id()));
     if tmp.exists() {
         std::fs::remove_dir_all(&tmp).map_err(|e| io_fail("cannot clear", &tmp, e))?;
     }
     std::fs::create_dir(&tmp).map_err(|e| io_fail("cannot create", &tmp, e))?;
-    let result = extract_into(&archive, &tmp, name, target, asset);
-    let finished = result.and_then(|()| {
-        let final_dir = base.join(format!("{name}-{version}-{}", &asset.sha256[..12]));
-        if final_dir.exists() {
-            std::fs::remove_dir_all(&final_dir)
-                .map_err(|e| io_fail("cannot replace", &final_dir, e))?;
-        }
-        std::fs::rename(&tmp, &final_dir).map_err(|e| io_fail("cannot install", &final_dir, e))?;
-        Ok(final_dir.join(&asset.bin))
-    });
-    if finished.is_err() {
+    let finished = extract_into(&archive, &tmp, name, target, asset)
+        .and_then(|()| write_marker(&tmp, asset))
+        .and_then(|()| publish(&tmp, &final_dir, n, asset));
+    // After a successful publish `tmp` is gone; after a lost race or a failure it is leftover.
+    if tmp.exists() {
         let _ = std::fs::remove_dir_all(&tmp);
     }
-    finished
+    finished.map(|()| final_dir.join(&asset.bin))
+}
+
+/// File inside an install directory, written last, holding the archive hash.
+const MARKER: &str = ".complete";
+
+fn write_marker(dir: &Path, asset: &Asset) -> Result<(), Failure> {
+    let marker = dir.join(MARKER);
+    std::fs::write(&marker, format!("{}\n", asset.sha256))
+        .map_err(|e| io_fail("cannot write", &marker, e))
+}
+
+/// An install directory is valid when its marker holds this archive's hash and the pinned
+/// binary resolves to a regular file inside it.
+fn install_is_valid(dir: &Path, asset: &Asset) -> bool {
+    let marked = std::fs::read_to_string(dir.join(MARKER)).is_ok_and(|m| m.trim() == asset.sha256);
+    if !marked {
+        return false;
+    }
+    let (Ok(real_dir), Ok(real_bin)) = (dir.canonicalize(), dir.join(&asset.bin).canonicalize())
+    else {
+        return false;
+    };
+    real_bin.starts_with(&real_dir) && real_bin.is_file()
+}
+
+/// Move the finished `tmp` into place. An invalid directory already there is moved aside
+/// (never deleted in place) so the rename can succeed. If another process published a valid
+/// install first, that one wins and this call succeeds.
+fn publish(tmp: &Path, final_dir: &Path, n: u64, asset: &Asset) -> Result<(), Failure> {
+    for attempt in 0..3 {
+        match std::fs::rename(tmp, final_dir) {
+            Ok(()) => return Ok(()),
+            Err(e) => {
+                if install_is_valid(final_dir, asset) {
+                    return Ok(());
+                }
+                if attempt == 2 || !final_dir.exists() {
+                    return Err(io_fail("cannot install", final_dir, e));
+                }
+                let aside =
+                    final_dir.with_file_name(format!("stale-{}-{n}-{attempt}", std::process::id()));
+                // Losing this race is fine: the next rename decides.
+                if std::fs::rename(final_dir, &aside).is_ok() {
+                    let _ = std::fs::remove_dir_all(&aside);
+                }
+            }
+        }
+    }
+    Err(io_fail(
+        "cannot install",
+        final_dir,
+        std::io::Error::other("lost the race three times"),
+    ))
 }
 
 /// Return the cached archive for `asset`, downloading it when absent or altered.
@@ -394,9 +450,19 @@ fn fetch_verified(
             return Ok(cached);
         }
         // Altered, truncated or not a regular file: never use it.
-        std::fs::remove_file(&cached).map_err(|e| io_fail("cannot remove", &cached, e))?;
+        match std::fs::remove_file(&cached) {
+            Ok(()) => {}
+            // Another process removed it first.
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => return Err(io_fail("cannot remove", &cached, e)),
+        }
     }
-    let part = cache.join(format!("{}.{}.part", asset.sha256, std::process::id()));
+    let part = cache.join(format!(
+        "{}.{}-{}.part",
+        asset.sha256,
+        std::process::id(),
+        TMP_COUNTER.fetch_add(1, Ordering::Relaxed)
+    ));
     let _ = std::fs::remove_file(&part);
     if let Err(e) = fetcher.fetch(&asset.url, &part) {
         let _ = std::fs::remove_file(&part);
