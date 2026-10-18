@@ -127,3 +127,77 @@ fn test_supply_07_ci_requirements_lock_is_fully_hashed() {
         );
     }
 }
+
+// ---- venv identity (WR-05) ----
+
+use up_dev::check::Ctx;
+use up_dev::python_tools::{venv_key, venv_path};
+
+const SHA_A: &str = "a000000000000000000000000000000000000000000000000000000000000000";
+const SHA_B: &str = "b000000000000000000000000000000000000000000000000000000000000000";
+
+#[test]
+fn test_supply_07_venv_key_covers_lock_python_and_uv() {
+    let base = venv_key("lock text", SHA_A, SHA_A);
+    assert_eq!(base, venv_key("lock text", SHA_A, SHA_A), "deterministic");
+    assert_eq!(base.len(), 64, "sha-256 hex");
+    assert_ne!(
+        base,
+        venv_key("other lock", SHA_A, SHA_A),
+        "lock changes the key"
+    );
+    assert_ne!(
+        base,
+        venv_key("lock text", SHA_B, SHA_A),
+        "python pin changes the key"
+    );
+    assert_ne!(
+        base,
+        venv_key("lock text", SHA_A, SHA_B),
+        "uv pin changes the key"
+    );
+    // Field boundaries are part of the input: moving text between fields changes the key.
+    assert_ne!(venv_key("ab", "c", SHA_A), venv_key("a", "bc", SHA_A));
+}
+
+/// A checkout holding only the files `venv_path` reads.
+fn checkout_with_versions(versions_yml: &str) -> tempfile::TempDir {
+    let dir = tempfile::tempdir().unwrap();
+    fs::create_dir_all(dir.path().join("tools")).unwrap();
+    fs::copy(
+        repo_root().join("tools/ci-requirements.txt"),
+        dir.path().join("tools/ci-requirements.txt"),
+    )
+    .unwrap();
+    fs::write(dir.path().join("versions.yml"), versions_yml).unwrap();
+    dir
+}
+
+#[test]
+fn test_supply_07_venv_path_changes_when_python_or_uv_pin_changes() {
+    let real = fs::read_to_string(repo_root().join("versions.yml")).unwrap();
+    let ctx_for = |text: &str| {
+        let dir = checkout_with_versions(text);
+        let ctx = Ctx {
+            root: dir.path().to_path_buf(),
+            github_actions: false,
+        };
+        let path = venv_path(&ctx).expect("venv path");
+        // Relative to the checkout so the two temp roots compare equal.
+        path.strip_prefix(dir.path()).unwrap().to_path_buf()
+    };
+    let baseline = ctx_for(&real);
+
+    let host = up_dev::tools::host_target().unwrap();
+    let versions = up_dev::tools::load_versions(&repo_root().join("versions.yml")).unwrap();
+    for tool in ["python", "uv"] {
+        let pinned = up_dev::tools::pinned_sha256(&versions, tool, host).unwrap();
+        let altered = real.replace(&pinned, &"f".repeat(64));
+        assert_ne!(altered, real, "{tool}: the pin appears in versions.yml");
+        assert_ne!(
+            ctx_for(&altered),
+            baseline,
+            "{tool} pin must change the venv path"
+        );
+    }
+}

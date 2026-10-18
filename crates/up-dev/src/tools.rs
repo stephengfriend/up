@@ -342,6 +342,21 @@ fn io_fail(what: &str, path: &Path, e: std::io::Error) -> Failure {
 
 static TMP_COUNTER: AtomicU64 = AtomicU64::new(0);
 
+/// The pinned archive SHA-256 of a download tool for `target`.
+pub fn pinned_sha256(
+    versions: &VersionsFile,
+    name: &str,
+    target: Target,
+) -> Result<String, Failure> {
+    versions
+        .tools
+        .get(name)
+        .and_then(|pin| pin.assets.as_ref())
+        .and_then(|assets| assets.get(&target))
+        .map(|asset| asset.sha256.clone())
+        .ok_or_else(|| Failure::one(format!("SUPPLY-01: no pin for {name} on {target}")))
+}
+
 /// Install `name` for `target` under `<root>/target/up-dev-tools/` and return the absolute
 /// path of its executable. The archive is hashed before it is extracted, every time.
 pub fn ensure_tool_with(

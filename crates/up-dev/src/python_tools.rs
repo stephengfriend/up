@@ -286,6 +286,32 @@ fn run_uv(mut cmd: Command, what: &str) -> Result<(), Failure> {
     }
 }
 
+/// What the venv directory name and completion marker are derived from (seam; the fix commit
+/// adds the interpreter and uv pins).
+pub fn venv_key(lock_text: &str, _python_sha256: &str, _uv_sha256: &str) -> String {
+    let mut hasher = <sha2::Sha256 as sha2::Digest>::new();
+    sha2::Digest::update(&mut hasher, lock_text.as_bytes());
+    sha2::Digest::finalize(hasher)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
+}
+
+/// The venv directory `ensure_venv` would use for this checkout and host, without installing.
+pub fn venv_path(ctx: &Ctx) -> Result<PathBuf, Failure> {
+    let text = fs::read_to_string(ctx.root.join(LOCK_PATH))
+        .map_err(|e| Failure::one(format!("python-tools: cannot read {LOCK_PATH}: {e}")))?;
+    let versions = tools::load_versions(&ctx.root.join("versions.yml"))?;
+    let target = tools::host_target()?;
+    let python = tools::pinned_sha256(&versions, "python", target)?;
+    let uv = tools::pinned_sha256(&versions, "uv", target)?;
+    let key = venv_key(&text, &python, &uv);
+    Ok(ctx
+        .root
+        .join("target/up-dev-tools")
+        .join(format!("venv-{}", &key[..12])))
+}
+
 /// Build (or reuse) the CI venv and return its `bin` directory.
 ///
 /// Path: `<root>/target/up-dev-tools/venv-<first 12 hex of sha256(lock)>`. A
