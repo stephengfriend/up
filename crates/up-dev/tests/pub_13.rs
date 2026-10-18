@@ -90,6 +90,11 @@ fn test_pub_13_removing_guard_exceptions_statement_fails() {
 }
 
 #[test]
+fn test_pub_13_removing_spec_check_exemptions_statement_fails() {
+    assert_removal_fails("agents never edit spec-check exemptions");
+}
+
+#[test]
 fn test_pub_13_statement_outside_rules_section_fails() {
     let (label, phrase) = rule("agents never bypass guard");
     let text = committed();
