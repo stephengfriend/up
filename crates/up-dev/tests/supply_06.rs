@@ -20,8 +20,7 @@ fn fixture_path(name: &str) -> PathBuf {
 }
 
 fn load(path: &std::path::Path) -> serde_json::Value {
-    up_config::yaml::load_file(path)
-        .unwrap_or_else(|e| panic!("{} must load: {e}", path.display()))
+    up_config::yaml::load_file(path).unwrap_or_else(|e| panic!("{} must load: {e}", path.display()))
 }
 
 fn messages(name: &str) -> Vec<String> {
