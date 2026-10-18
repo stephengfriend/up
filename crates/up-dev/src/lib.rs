@@ -7,6 +7,7 @@
 pub mod ansible_lint;
 pub mod cargo_deny;
 pub mod check;
+pub mod dispatch;
 pub mod gitleaks;
 pub mod python_tools;
 pub mod renovate_check;
