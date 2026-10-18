@@ -184,6 +184,83 @@ fn test_supply_02_self_hosted_runner_fails() {
     }
 }
 
+/// WR-02: a label that is not on the GitHub-hosted allowlist fails, because a self-hosted
+/// runner registered with that label would receive the job.
+#[test]
+fn test_supply_02_custom_runner_label_fails() {
+    for name in [
+        "self-hosted-custom-label.yml",
+        "self-hosted-custom-list.yml",
+        "self-hosted-custom-matrix.yml",
+    ] {
+        assert_exactly(name, "self-hosted-runner");
+        let v = check_fixture(name);
+        assert!(
+            v[0].message.contains("not a GitHub-hosted runner label"),
+            "{name}: {}",
+            v[0].message
+        );
+    }
+}
+
+fn runs_on_violations(label: &str) -> Vec<Violation> {
+    let doc = serde_json::json!({
+        "permissions": {"contents": "read"},
+        "jobs": {"build": {"runs-on": label, "steps": [{"run": "true"}]}},
+    });
+    up_dev::workflow_lint::check_workflow(&doc)
+}
+
+#[test]
+fn test_supply_02_github_hosted_label_allowlist() {
+    for ok in [
+        "ubuntu-latest",
+        "ubuntu-24.04",
+        "ubuntu-22.04",
+        "ubuntu-24.04-arm",
+        "ubuntu-22.04-arm",
+        "ubuntu-slim",
+        "macos-latest",
+        "macos-26",
+        "macos-15",
+        "macos-14",
+        "macos-15-intel",
+        "macos-latest-large",
+        "macos-14-xlarge",
+        "windows-latest",
+        "windows-2025",
+        "windows-2022",
+        "windows-11-arm",
+        "Ubuntu-24.04",
+    ] {
+        let v = runs_on_violations(ok);
+        assert!(v.is_empty(), "{ok} must be accepted:\n{}", render(&v));
+    }
+    for bad in [
+        "self-hosted",
+        "gpu-box",
+        "linux",
+        "ubuntu",
+        "ubuntu-",
+        "ubuntu-24.04-evil",
+        "ubuntu-24.04.1",
+        "macos-latest-lab",
+        "macos",
+        "windows-2022-lab",
+        "my-ubuntu-24.04",
+        "ubuntu-24.04 ",
+        "ubuntu_24.04",
+        "",
+    ] {
+        let v = runs_on_violations(bad);
+        assert!(
+            v.len() == 1 && v[0].rule == "self-hosted-runner",
+            "{bad:?} must be refused:\n{}",
+            render(&v)
+        );
+    }
+}
+
 #[test]
 fn test_supply_02_runner_group_fails() {
     assert_exactly("self-hosted-group.yml", "self-hosted-runner");
