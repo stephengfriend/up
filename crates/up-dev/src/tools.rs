@@ -262,28 +262,37 @@ pub trait Fetcher {
 /// https-only curl with its config files ignored (`-q` must stay first).
 pub struct CurlFetcher;
 
+/// The curl argument vector for one download (everything after the program name).
+pub fn curl_args(url: &str, dest: &Path) -> Vec<std::ffi::OsString> {
+    let mut args: Vec<std::ffi::OsString> = [
+        "-q",
+        "--proto",
+        "=https",
+        "--proto-redir",
+        "=https",
+        "--tlsv1.2",
+        "--fail",
+        "--silent",
+        "--show-error",
+        "--location",
+        "--max-redirs",
+        "5",
+        "--max-filesize",
+        MAX_DOWNLOAD_BYTES,
+        "--output",
+    ]
+    .iter()
+    .map(std::ffi::OsString::from)
+    .collect();
+    args.push(dest.into());
+    args.push(url.into());
+    args
+}
+
 impl Fetcher for CurlFetcher {
     fn fetch(&self, url: &str, dest: &Path) -> Result<(), Failure> {
         let out = Command::new("curl")
-            .args([
-                "-q",
-                "--proto",
-                "=https",
-                "--proto-redir",
-                "=https",
-                "--tlsv1.2",
-                "--fail",
-                "--silent",
-                "--show-error",
-                "--location",
-                "--max-redirs",
-                "5",
-                "--max-filesize",
-                MAX_DOWNLOAD_BYTES,
-                "--output",
-            ])
-            .arg(dest)
-            .arg(url)
+            .args(curl_args(url, dest))
             .output()
             .map_err(|e| Failure::one(format!("SUPPLY-01: cannot run curl: {e}")))?;
         if out.status.success() {

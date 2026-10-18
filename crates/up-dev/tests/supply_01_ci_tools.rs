@@ -669,3 +669,27 @@ fn test_supply_01_concurrent_installs_all_succeed() {
         assert!(leftovers.is_empty(), "temp dirs left behind: {leftovers:?}");
     }
 }
+
+// ---- curl bounds (WR-06) ----
+
+fn curl_value(args: &[std::ffi::OsString], flag: &str) -> Option<String> {
+    let at = args.iter().position(|a| a == flag)?;
+    args.get(at + 1).map(|v| v.to_string_lossy().into_owned())
+}
+
+#[test]
+fn test_supply_01_curl_has_connect_and_total_timeouts() {
+    let args = up_dev::tools::curl_args(GOOD_URL, Path::new("/dest"));
+    let connect: u32 = curl_value(&args, "--connect-timeout")
+        .expect("--connect-timeout is set")
+        .parse()
+        .expect("seconds");
+    let total: u32 = curl_value(&args, "--max-time")
+        .expect("--max-time is set")
+        .parse()
+        .expect("seconds");
+    assert!((1..=60).contains(&connect), "connect timeout {connect}s");
+    assert!((60..=1800).contains(&total), "total timeout {total}s");
+    assert_eq!(args[0], "-q", "curl config files stay ignored (-q first)");
+    assert_eq!(curl_value(&args, "--proto").as_deref(), Some("=https"));
+}
