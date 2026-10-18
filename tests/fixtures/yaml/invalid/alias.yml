@@ -1,0 +1,4 @@
+# expect: anchor
+base: &base
+  retries: 3
+copy: *base

@@ -1,0 +1,4 @@
+# expect: multiple-documents
+engine: one
+---
+engine: two

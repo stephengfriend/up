@@ -1,0 +1,5 @@
+# expect: duplicate-key
+engine:
+  channel: stable
+  commit: one
+  commit: two

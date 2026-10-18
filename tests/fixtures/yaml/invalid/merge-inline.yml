@@ -1,0 +1,4 @@
+# expect: merge-key
+derived:
+  <<: {retries: 3}
+  extra: 1

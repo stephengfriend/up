@@ -1,0 +1,3 @@
+# expect: duplicate-key
+commit: one
+"commit": two
