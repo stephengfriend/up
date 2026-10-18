@@ -162,68 +162,131 @@ fn check_pr_target_head_checkout(doc: &Value, out: &mut Vec<Violation>) {
     }
 }
 
-/// String items of a scalar-or-list value.
-fn strings_of(v: &Value) -> Vec<String> {
-    match v {
-        Value::String(s) => vec![s.clone()],
-        Value::Array(items) => items
-            .iter()
-            .filter_map(|i| i.as_str().map(str::to_string))
-            .collect(),
-        _ => Vec::new(),
-    }
-}
-
-/// The matrix key in a label of the form `${{ matrix.<key> }}`.
+/// The matrix key in a label that is exactly `${{ matrix.<key> }}`.
 fn matrix_key(label: &str) -> Option<String> {
     let squashed: String = label.chars().filter(|c| !c.is_whitespace()).collect();
     let inner = squashed.strip_prefix("${{")?.strip_suffix("}}")?;
     let key = inner.strip_prefix("matrix.")?;
-    (!key.is_empty()).then(|| key.to_string())
+    let plain = !key.is_empty()
+        && key
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-');
+    plain.then(|| key.to_string())
 }
 
-/// Every label a job's `runs-on` can take, matrix values expanded.
-fn runner_labels(job: &Value) -> Vec<String> {
-    let labels = match job.get("runs-on") {
-        Some(Value::Object(map)) => map.get("labels").map(strings_of).unwrap_or_default(),
-        Some(other) => strings_of(other),
-        None => Vec::new(),
+/// Literal string values of a matrix entry (a string, or a list of strings).
+/// `None` when any value is not a literal string free of `${{ … }}`.
+fn literal_strings(v: &Value) -> Option<Vec<String>> {
+    let items: Vec<&Value> = match v {
+        Value::Array(items) => items.iter().collect(),
+        other => vec![other],
     };
-    let matrix = job.get("strategy").and_then(|s| s.get("matrix"));
-    let mut all = Vec::new();
-    for label in labels {
-        if let (Some(key), Some(matrix)) = (matrix_key(&label), matrix) {
-            if let Some(values) = matrix.get(&key) {
-                all.extend(strings_of(values));
-            }
-            if let Some(include) = matrix.get("include").and_then(Value::as_array) {
-                for entry in include {
-                    if let Some(value) = entry.get(&key) {
-                        all.extend(strings_of(value));
+    items
+        .into_iter()
+        .map(|i| i.as_str().filter(|s| !s.contains("${{")).map(str::to_string))
+        .collect()
+}
+
+/// Resolve `matrix.<key>` statically from a job's `strategy.matrix`
+/// (literal values and `include` entries). Context keys are case-insensitive.
+fn resolve_matrix(job: &Value, key: &str) -> Result<Vec<String>, String> {
+    let unresolved = || format!("`matrix.{key}` does not resolve statically in `strategy.matrix`");
+    let matrix = job
+        .get("strategy")
+        .and_then(|s| s.get("matrix"))
+        .and_then(Value::as_object)
+        .ok_or_else(unresolved)?;
+    let mut values = Vec::new();
+    for (k, v) in matrix {
+        if k.eq_ignore_ascii_case(key) {
+            values.extend(literal_strings(v).ok_or_else(unresolved)?);
+        }
+    }
+    match matrix.get("include") {
+        None => {}
+        Some(Value::Array(entries)) => {
+            for entry in entries {
+                let Some(entry) = entry.as_object() else {
+                    return Err(unresolved());
+                };
+                for (k, v) in entry {
+                    if k.eq_ignore_ascii_case(key) {
+                        values.extend(literal_strings(v).ok_or_else(unresolved)?);
                     }
                 }
             }
         }
-        all.push(label);
+        Some(_) => return Err(unresolved()),
     }
-    all
+    if values.is_empty() {
+        return Err(unresolved());
+    }
+    Ok(values)
 }
 
-/// SUPPLY-02 allows no self-hosted runners.
+/// Every literal label a job's `runs-on` can take, matrix values expanded, or
+/// the reason the runner cannot be proven GitHub-hosted.
+fn runner_labels(job: &Value) -> Result<Vec<String>, String> {
+    let raw: Vec<&Value> = match job.get("runs-on") {
+        Some(Value::Object(map)) => {
+            if map.contains_key("group") {
+                return Err("`runs-on` names a runner group".to_string());
+            }
+            match map.get("labels") {
+                Some(Value::Array(items)) => items.iter().collect(),
+                Some(other) => vec![other],
+                None => Vec::new(),
+            }
+        }
+        Some(Value::Array(items)) => items.iter().collect(),
+        Some(other) => vec![other],
+        None => Vec::new(),
+    };
+    let mut all = Vec::new();
+    for label in raw {
+        let Some(label) = label.as_str() else {
+            return Err("`runs-on` has a label that is not a plain string".to_string());
+        };
+        if !label.contains("${{") {
+            all.push(label.to_string());
+            continue;
+        }
+        let Some(key) = matrix_key(label) else {
+            return Err(format!("`runs-on` uses the expression `{}`", label.trim()));
+        };
+        all.extend(resolve_matrix(job, &key)?);
+    }
+    Ok(all)
+}
+
+/// SUPPLY-02 allows no self-hosted runners; a runner that cannot be proven
+/// GitHub-hosted (runner group, non-static expression) is refused too.
 fn check_self_hosted(doc: &Value, out: &mut Vec<Violation>) {
     let Some(jobs) = doc.get("jobs").and_then(Value::as_object) else {
         return;
     };
     for (id, job) in jobs {
-        if runner_labels(job)
-            .iter()
-            .any(|l| l.trim().eq_ignore_ascii_case("self-hosted"))
-        {
-            out.push(Violation {
+        let location = format!("jobs.{id}.runs-on");
+        match runner_labels(job) {
+            Ok(labels) => {
+                if labels
+                    .iter()
+                    .any(|l| l.trim().eq_ignore_ascii_case("self-hosted"))
+                {
+                    out.push(Violation {
+                        rule: RULE_SELF_HOSTED,
+                        location,
+                        message: "job can run on a `self-hosted` runner".to_string(),
+                    });
+                }
+            }
+            Err(reason) => out.push(Violation {
                 rule: RULE_SELF_HOSTED,
-                location: format!("jobs.{id}.runs-on"),
-                message: "job can run on a `self-hosted` runner".to_string(),
-            });
+                location,
+                message: format!(
+                    "job `{id}`: the runner cannot be proven GitHub-hosted ({reason})"
+                ),
+            }),
         }
     }
 }
