@@ -14,3 +14,11 @@ rules:
   line-length:
     max: 120
     allow-non-breakable-inline-mappings: true
+  # Settings ansible-lint requires of a repo-level yamllint config (it warns and
+  # disables fix mode otherwise).
+  comments-indentation: false
+  braces:
+    max-spaces-inside: 1
+  octal-values:
+    forbid-implicit-octal: true
+    forbid-explicit-octal: true
