@@ -75,8 +75,11 @@ fn test_arch_11_tag_rejected() {
 
 #[test]
 fn test_arch_11_tag_text_not_echoed() {
-    let err = refused("invalid/tag-custom.yml");
-    assert!(!err.to_string().contains("custom"), "{err}");
+    let err = yaml::load_str("value: !custom 12\n", "inline").expect_err("tag");
+    assert_eq!(err.kind(), "tag", "got {err:?}");
+    let shown = err.to_string();
+    assert!(!shown.contains("custom"), "{shown}");
+    assert!(shown.contains("line 1, column 8"), "tag position: {shown}");
 }
 
 #[test]

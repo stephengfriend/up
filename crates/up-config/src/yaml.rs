@@ -6,6 +6,7 @@
 //! the construct and where it is, never the scalar values around it, and every
 //! piece of text in an error is escaped to printable ASCII.
 
+use std::collections::HashSet;
 use std::fmt::Write as _;
 use std::io::Read as _;
 use std::path::Path;
@@ -272,6 +273,7 @@ enum Frame {
         path: String,
         expect_key: bool,
         key: String,
+        seen: HashSet<String>,
     },
     Seq {
         path: String,
@@ -288,8 +290,10 @@ enum Slot {
 
 struct Scan<'a> {
     origin: &'a str,
+    limits: &'a Limits,
     stack: Vec<Frame>,
     documents: usize,
+    nodes: usize,
     root_done: bool,
 }
 
@@ -297,6 +301,13 @@ type At = (usize, usize);
 
 fn at(span: &Span) -> At {
     (span.start.line(), span.start.col() + 1)
+}
+
+/// Where the tag token is, falling back to the node itself.
+fn tag_position(span: &Span) -> At {
+    span.tag_start
+        .map(|m| (m.line(), m.col() + 1))
+        .unwrap_or_else(|| at(span))
 }
 
 impl Scan<'_> {
@@ -338,22 +349,87 @@ impl Scan<'_> {
         }
     }
 
+    fn located(
+        &self,
+        kind: fn(String, String, usize, usize) -> YamlError,
+        path: &str,
+        (line, col): At,
+    ) -> YamlError {
+        kind(self.origin.to_string(), path.to_string(), line, col)
+    }
+
+    fn limit(&self, what: &'static str, path: &str, (line, col): At) -> YamlError {
+        YamlError::Limit {
+            origin: self.origin.to_string(),
+            what,
+            path: path.to_string(),
+            line,
+            col,
+        }
+    }
+
     /// Checks shared by every node start. `anchor` is the parser's anchor id (0 = none).
-    fn check_node(&self, slot: &Slot, anchor: usize, (line, col): At) -> Result<String, YamlError> {
+    /// Returns the node's path.
+    fn check_node(
+        &mut self,
+        slot: &Slot,
+        anchor: usize,
+        tag_at: Option<At>,
+        position: At,
+    ) -> Result<String, YamlError> {
         let path = match slot {
             Slot::Root => String::new(),
             Slot::Key { map_path } => map_path.clone(),
             Slot::Value { path } => path.clone(),
         };
         if anchor != 0 {
-            return Err(YamlError::Anchor {
-                origin: self.origin.to_string(),
+            return Err(self.located(
+                |origin, path, line, col| YamlError::Anchor {
+                    origin,
+                    path,
+                    line,
+                    col,
+                },
+                &path,
+                position,
+            ));
+        }
+        if let Some(tag_position) = tag_at {
+            return Err(self.located(
+                |origin, path, line, col| YamlError::Tag {
+                    origin,
+                    path,
+                    line,
+                    col,
+                },
+                &path,
+                tag_position,
+            ));
+        }
+        self.nodes += 1;
+        if self.nodes > self.limits.max_nodes {
+            return Err(self.limit("node count", &path, position));
+        }
+        Ok(path)
+    }
+
+    fn alias(&mut self, span: &Span) -> Result<(), YamlError> {
+        let slot = self.slot();
+        let path = match &slot {
+            Slot::Root => String::new(),
+            Slot::Key { map_path } => map_path.clone(),
+            Slot::Value { path } => path.clone(),
+        };
+        Err(self.located(
+            |origin, path, line, col| YamlError::Alias {
+                origin,
                 path,
                 line,
                 col,
-            });
-        }
-        Ok(path)
+            },
+            &path,
+            at(span),
+        ))
     }
 
     fn scalar(
@@ -361,10 +437,14 @@ impl Scan<'_> {
         text: &str,
         style: ScalarStyle,
         anchor: usize,
+        tag_at: Option<At>,
         span: &Span,
     ) -> Result<(), YamlError> {
         let slot = self.slot();
-        let path = self.check_node(&slot, anchor, at(span))?;
+        let path = self.check_node(&slot, anchor, tag_at, at(span))?;
+        if text.len() > self.limits.max_scalar_bytes {
+            return Err(self.limit("scalar size", &path, at(span)));
+        }
         match slot {
             Slot::Root => {
                 let null_like = style == ScalarStyle::Plain
@@ -383,13 +463,43 @@ impl Scan<'_> {
                     }
                 });
             }
-            Slot::Key { .. } => {
-                if let Some(Frame::Map {
-                    expect_key, key, ..
-                }) = self.stack.last_mut()
-                {
-                    *expect_key = false;
-                    *key = text.to_string();
+            Slot::Key { map_path } => {
+                if text == "<<" {
+                    return Err(self.located(
+                        |origin, path, line, col| YamlError::MergeKey {
+                            origin,
+                            path,
+                            line,
+                            col,
+                        },
+                        &format!("{map_path}/{}", segment(text)),
+                        at(span),
+                    ));
+                }
+                let fresh = match self.stack.last_mut() {
+                    Some(Frame::Map {
+                        expect_key,
+                        key,
+                        seen,
+                        ..
+                    }) => {
+                        *expect_key = false;
+                        *key = text.to_string();
+                        seen.insert(text.to_string())
+                    }
+                    _ => true,
+                };
+                if !fresh {
+                    return Err(self.located(
+                        |origin, path, line, col| YamlError::DuplicateKey {
+                            origin,
+                            path,
+                            line,
+                            col,
+                        },
+                        &map_path,
+                        at(span),
+                    ));
                 }
             }
             Slot::Value { .. } => self.node_done(),
@@ -397,9 +507,30 @@ impl Scan<'_> {
         Ok(())
     }
 
-    fn open(&mut self, is_map: bool, anchor: usize, span: &Span) -> Result<(), YamlError> {
+    fn open(
+        &mut self,
+        is_map: bool,
+        anchor: usize,
+        tag_at: Option<At>,
+        span: &Span,
+    ) -> Result<(), YamlError> {
         let slot = self.slot();
-        let path = self.check_node(&slot, anchor, at(span))?;
+        let path = self.check_node(&slot, anchor, tag_at, at(span))?;
+        if matches!(slot, Slot::Key { .. }) {
+            return Err(self.located(
+                |origin, path, line, col| YamlError::NonStringKey {
+                    origin,
+                    path,
+                    line,
+                    col,
+                },
+                &path,
+                at(span),
+            ));
+        }
+        if self.stack.len() + 1 > self.limits.max_depth {
+            return Err(self.limit("depth", &path, at(span)));
+        }
         if matches!(slot, Slot::Root) && !is_map {
             let (line, col) = at(span);
             return Err(YamlError::RootNotMapping {
@@ -414,6 +545,7 @@ impl Scan<'_> {
                 path,
                 expect_key: true,
                 key: String::new(),
+                seen: HashSet::new(),
             }
         } else {
             Frame::Seq { path, index: 0 }
@@ -429,14 +561,16 @@ impl Scan<'_> {
 
 /// Walk the parser events once and refuse anything the strict profile forbids.
 /// Reports the first violation in document order.
-fn prescan(src: &str, origin: &str, _limits: &Limits) -> Result<(), YamlError> {
+fn prescan(src: &str, origin: &str, limits: &Limits) -> Result<(), YamlError> {
     let mut options = ParserOptions::default();
     options.set_emit_comments(false);
     let mut parser = Parser::new_from_str_with_options(src, options);
     let mut scan = Scan {
         origin,
+        limits,
         stack: Vec::new(),
         documents: 0,
+        nodes: 0,
         root_done: false,
     };
     while let Some(item) = parser.next_event() {
@@ -461,11 +595,32 @@ fn prescan(src: &str, origin: &str, _limits: &Limits) -> Result<(), YamlError> {
                     });
                 }
             }
-            Event::Scalar(text, style, anchor, _tag) => {
-                scan.scalar(&text, style, anchor, &span)?;
+            Event::Alias(_) => scan.alias(&span)?,
+            Event::Scalar(text, style, anchor, tag) => {
+                scan.scalar(
+                    &text,
+                    style,
+                    anchor,
+                    tag.is_some().then(|| tag_position(&span)),
+                    &span,
+                )?;
             }
-            Event::SequenceStart(_, anchor, _tag) => scan.open(false, anchor, &span)?,
-            Event::MappingStart(_, anchor, _tag) => scan.open(true, anchor, &span)?,
+            Event::SequenceStart(_, anchor, tag) => {
+                scan.open(
+                    false,
+                    anchor,
+                    tag.is_some().then(|| tag_position(&span)),
+                    &span,
+                )?;
+            }
+            Event::MappingStart(_, anchor, tag) => {
+                scan.open(
+                    true,
+                    anchor,
+                    tag.is_some().then(|| tag_position(&span)),
+                    &span,
+                )?;
+            }
             Event::SequenceEnd | Event::MappingEnd => scan.close(),
             _ => {}
         }
@@ -478,8 +633,15 @@ fn prescan(src: &str, origin: &str, _limits: &Limits) -> Result<(), YamlError> {
     Ok(())
 }
 
-fn parse_options() -> serde_saphyr::Options {
+fn parse_options(limits: &Limits) -> serde_saphyr::Options {
     let mut options = serde_saphyr::Options::default();
+    let mut budget = serde_saphyr::Budget::default();
+    budget.max_depth = limits.max_depth;
+    budget.max_nodes = limits.max_nodes;
+    budget.max_total_scalar_bytes = limits.max_input_bytes;
+    options.budget = Some(budget);
+    // YAML 1.1 spellings (`yes`, `no`, `on`, `off`) stay strings; only `true`/`false` are booleans.
+    options.strict_booleans = true;
     options.duplicate_keys = serde_saphyr::DuplicateKeyPolicy::Error;
     options.merge_keys = serde_saphyr::MergeKeyPolicy::Error;
     options.reject_unsupported_tags = true;
@@ -492,6 +654,15 @@ fn deserialize_error(origin: &str, e: &serde_saphyr::Error) -> YamlError {
         .location()
         .map(|l| (l.line() as usize, l.column() as usize))
         .unwrap_or((0, 0));
+    if matches!(e, serde_saphyr::Error::Budget { .. }) {
+        return YamlError::Limit {
+            origin: origin.to_string(),
+            what: "parser budget",
+            path: String::new(),
+            line,
+            col,
+        };
+    }
     YamlError::Deserialize {
         origin: origin.to_string(),
         message: cap(&e.to_string()),
@@ -573,6 +744,6 @@ fn from_str_with<T: serde::de::DeserializeOwned>(
 ) -> Result<T, YamlError> {
     check_size(src, origin, limits)?;
     prescan(src, origin, limits)?;
-    serde_saphyr::from_str_with_options::<T>(src, parse_options())
+    serde_saphyr::from_str_with_options::<T>(src, parse_options(limits))
         .map_err(|e| deserialize_error(origin, &e))
 }
