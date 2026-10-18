@@ -49,6 +49,7 @@ pub const M0_PATHS: &[RequiredPath] = &[
     file("docs/design/threat-model.md"),
     file("LICENSE"),
     file("SECURITY.md"),
+    file("CONTRIBUTING.md"),
     file(".up-engine"),
     file("defaults.yml"),
     file("versions.yml"),
@@ -234,9 +235,27 @@ pub const AGENTS_RULES: &[(&str, &str)] = &[
     ("agents never change guard exceptions", "guard exceptions"),
 ];
 
-/// PUB-13 (stub, filled in by the GREEN commit).
-pub fn check_agents_md(_text: &str) -> Vec<String> {
-    Vec::new()
+/// PUB-13: AGENTS.md must state each rule in [`AGENTS_RULES`] inside its
+/// `## Rules` section, which runs from the line exactly `## Rules` to the next
+/// line starting with `## ` (or the end of the file). The same words anywhere
+/// else in the file do not count.
+pub fn check_agents_md(text: &str) -> Vec<String> {
+    let Some(start) = text.lines().position(|l| l == "## Rules") else {
+        return vec!["PUB-13: AGENTS.md has no ## Rules section".to_string()];
+    };
+    let section: Vec<&str> = text
+        .lines()
+        .skip(start + 1)
+        .take_while(|l| !l.starts_with("## "))
+        .collect();
+    let section = section.join("\n");
+    AGENTS_RULES
+        .iter()
+        .filter(|(_, phrase)| !section.contains(phrase))
+        .map(|(label, _)| {
+            format!("PUB-13: AGENTS.md ## Rules is missing the statement \"{label}\"")
+        })
+        .collect()
 }
 
 pub fn run(ctx: &Ctx, _args: &[String]) -> CheckResult {
@@ -249,6 +268,10 @@ pub fn run(ctx: &Ctx, _args: &[String]) -> CheckResult {
     match std::fs::read_to_string(ctx.root.join("SECURITY.md")) {
         Ok(text) => messages.extend(check_security_md(&text)),
         Err(_) => messages.push("PUB-12: SECURITY.md unreadable".to_string()),
+    }
+    match std::fs::read_to_string(ctx.root.join("AGENTS.md")) {
+        Ok(text) => messages.extend(check_agents_md(&text)),
+        Err(_) => messages.push("PUB-13: AGENTS.md unreadable".to_string()),
     }
     if messages.is_empty() {
         Ok(())
