@@ -82,6 +82,13 @@ pub fn check_renovate_config(doc: &Value) -> Vec<String> {
     found
 }
 
+/// RED stub for task 2.
+pub fn select_config_files(
+    _tracked: impl IntoIterator<Item = String>,
+) -> Result<Vec<String>, String> {
+    Ok(Vec::new())
+}
+
 const ROOT_CONFIG: &str = "renovate.json";
 
 /// `SUPPLY-06: <message>` becomes `SUPPLY-06: <file>: <message>`.

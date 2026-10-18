@@ -1,0 +1,15 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    "helpers:pinGitHubActionDigestsToSemver"
+  ],
+  "enabledManagers": [
+    "github-actions",
+    "cargo"
+  ],
+  "automerge": "true",
+  "platformAutomerge": false,
+  "minimumReleaseAge": "7 days",
+  "internalChecksFilter": "strict"
+}
