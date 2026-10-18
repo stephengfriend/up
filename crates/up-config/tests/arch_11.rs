@@ -266,3 +266,77 @@ fn test_arch_11_load_file_missing_is_io_error() {
     let err = yaml::load_file(&fixture("valid/does-not-exist.yml")).expect_err("missing file");
     assert_eq!(err.kind(), "io", "got {err:?}");
 }
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum Mode {
+    Fast,
+    Slow,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Inner {
+    #[allow(dead_code)]
+    level: u32,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Probe {
+    #[allow(dead_code)]
+    mode: Mode,
+    #[allow(dead_code)]
+    settings: Inner,
+}
+
+/// ARCH-11: a typed-deserialization failure names where and what kind of error it is,
+/// and never copies scalar or key text from the source.
+#[test]
+fn test_arch_11_deserialize_error_does_not_echo_values() {
+    let cases: [(&str, &str, &str, &str); 5] = [
+        (
+            "mode: hunter2variant\nsettings:\n  level: 1\n",
+            "hunter2variant",
+            "unknown variant",
+            "/mode",
+        ),
+        (
+            "mode: fast\nsettings:\n  level: 1\n  hunter2key: 2\n",
+            "hunter2key",
+            "unknown field",
+            "/settings",
+        ),
+        (
+            "mode: fast\nsettings:\n  level: hunter2value\n",
+            "hunter2value",
+            "invalid",
+            "/settings/level",
+        ),
+        (
+            "mode: fast\nhunter2key: 1\nsettings:\n  level: 1\n",
+            "hunter2key",
+            "unknown field",
+            "",
+        ),
+        ("mode: fast\n", "hunter2", "missing field", ""),
+    ];
+    for (src, token, category, path) in cases {
+        let err = yaml::from_str::<Probe>(src, "inline").expect_err("must not deserialize");
+        assert_eq!(err.kind(), "deserialize", "got {err:?}");
+        let shown = err.to_string();
+        let debug = format!("{err:?}");
+        assert!(!shown.contains(token), "Display echoes {token}: {shown}");
+        assert!(!debug.contains(token), "Debug echoes {token}: {debug}");
+        assert!(shown.contains(category), "category `{category}` missing: {shown}");
+        if !path.is_empty() {
+            assert!(shown.contains(path), "path `{path}` missing: {shown}");
+        }
+        assert!(shown.contains("line"), "position missing: {shown}");
+    }
+    // Wrong container type: a sequence where a scalar belongs.
+    let err = yaml::from_str::<Probe>("mode: [hunter2variant]\nsettings:\n  level: 1\n", "inline")
+        .expect_err("wrong shape");
+    assert!(!err.to_string().contains("hunter2"), "{err}");
+    assert!(!format!("{err:?}").contains("hunter2"), "{err:?}");
+}
