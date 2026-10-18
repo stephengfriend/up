@@ -89,13 +89,19 @@ fn check_token_permissions(doc: &Value, out: &mut Vec<Violation>) {
     }
 }
 
-/// Remove all whitespace and lower-case, so `${{github.event.pull_request.head.ref}}`
-/// and `${{ github.event.pull_request.head.ref }}` compare equal.
+/// Remove all whitespace, lower-case, and rewrite bracket property access to dots, so
+/// `${{github.event.pull_request.head.ref}}`, `${{ github.event.pull_request.head.ref }}` and
+/// `${{ github['event']['pull_request']['head']['ref'] }}` compare equal.
 fn squash(s: &str) -> String {
-    s.chars()
+    let flat: String = s
+        .chars()
         .filter(|c| !c.is_whitespace())
         .flat_map(char::to_lowercase)
-        .collect()
+        .collect();
+    flat.replace("['", ".")
+        .replace("[\"", ".")
+        .replace("']", "")
+        .replace("\"]", "")
 }
 
 /// Trigger names from `on`: a string, a list, or a mapping's keys.
@@ -111,16 +117,29 @@ fn triggers(doc: &Value) -> Vec<String> {
     }
 }
 
-const HEAD_MARKERS: [&str; 3] = [
+/// Expressions and ref spellings that name fork code: the pull request head, the merge of the
+/// head into base (`merge_commit_sha`, `refs/pull/`, `pull/<n>/...` built from a number), and
+/// the head of the run a `workflow_run` workflow follows.
+const HEAD_MARKERS: [&str; 7] = [
     "github.event.pull_request.head.",
+    "github.event.pull_request.merge_commit_sha",
+    "github.event.pull_request.number",
+    "github.event.number",
+    "github.event.workflow_run.head",
     "github.head_ref",
     "refs/pull/",
 ];
 
-/// `pull_request_target` runs with the base repository's token, so it must not
-/// check out the pull request's head (fork code).
+/// Triggers that run with the base repository's token while carrying fork-controlled data.
+const PRIVILEGED_TRIGGERS: [&str; 2] = ["pull_request_target", "workflow_run"];
+
+/// `pull_request_target` and `workflow_run` run with the base repository's token, so they must
+/// not check out the pull request's head or its merge (fork code).
 fn check_pr_target_head_checkout(doc: &Value, out: &mut Vec<Violation>) {
-    if !triggers(doc).iter().any(|t| t == "pull_request_target") {
+    if !triggers(doc)
+        .iter()
+        .any(|t| PRIVILEGED_TRIGGERS.contains(&t.as_str()))
+    {
         return;
     }
     let Some(jobs) = doc.get("jobs").and_then(Value::as_object) else {
