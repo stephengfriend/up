@@ -79,3 +79,73 @@ fn test_pub_01_untracked_path_counts_as_missing() {
         vec!["PUB-01: missing README.md (expected file)".to_string()]
     );
 }
+
+/// Every path in the public-repo.md contents table. SECURITY.md and
+/// CONTRIBUTING.md are listed separately: plan 01-02 creates them and moves
+/// them into M0_PATHS; until then they may sit in either place.
+const CONTENTS_TABLE: &[&str] = &[
+    "up.sh",
+    "crates/up/",
+    "ansible/",
+    "chezmoi/",
+    "images/",
+    "containers/",
+    "schema/",
+    "toolchain/",
+    "defaults.yml",
+    "versions.yml",
+    "hooks/",
+    "guard/",
+    "template/",
+    "docs/README.md",
+    "docs/design/",
+    "docs/design/threat-model.md",
+    "docs/roadmap.md",
+    "docs/decisions.md",
+    "docs/glossary.md",
+    "docs/open-questions.md",
+    "docs/reviews/",
+    "docs/guides/",
+    "docs/reference/",
+    "AGENTS.md",
+    "prompts/",
+    "CLAUDE.md",
+    ".claude/commands/",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE",
+    ".up-engine",
+];
+const PENDING_PLAN_01_02: &[&str] = &["CONTRIBUTING.md", "SECURITY.md"];
+
+#[test]
+fn test_pub_01_m0_list_covers_contents_table() {
+    use up_dev::repo_files::DEFERRED_TO_M4;
+    let in_m0 = |p: &str| M0_PATHS.iter().any(|r| r.path == p);
+    for path in CONTENTS_TABLE.iter().chain(PENDING_PLAN_01_02) {
+        let known =
+            in_m0(path) || DEFERRED_TO_M4.contains(path) || PENDING_PLAN_01_02.contains(path);
+        assert!(
+            known,
+            "contents table path {path} is in neither M0_PATHS nor DEFERRED_TO_M4"
+        );
+    }
+    // The M0 subset is everything except the M4-deferred paths (and the two
+    // files plan 01-02 owns): nothing else may hide in the deferred list.
+    for path in CONTENTS_TABLE {
+        if DEFERRED_TO_M4.contains(path) {
+            assert!(
+                !in_m0(path),
+                "{path} is deferred to M4 and must not be enforced in M0"
+            );
+        } else {
+            assert!(in_m0(path), "{path} must be enforced from M0");
+        }
+    }
+    for path in PENDING_PLAN_01_02 {
+        assert!(
+            in_m0(path) || !DEFERRED_TO_M4.contains(path),
+            "{path} is an M0 file and must not be deferred to M4"
+        );
+    }
+}

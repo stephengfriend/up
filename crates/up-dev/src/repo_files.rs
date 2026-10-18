@@ -101,6 +101,11 @@ pub fn check_paths(tracked: &BTreeSet<String>, required: &[RequiredPath]) -> Vec
     messages
 }
 
+/// Stub: the real PUB-10 check lands in the GREEN step.
+pub fn check_license(_text: &str) -> Vec<String> {
+    Vec::new()
+}
+
 pub fn run(ctx: &Ctx, _args: &[String]) -> CheckResult {
     let tracked = tracked_files(&ctx.root)?;
     let messages = check_paths(&tracked, M0_PATHS);
