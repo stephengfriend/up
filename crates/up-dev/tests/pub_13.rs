@@ -54,6 +54,7 @@ fn test_pub_13_every_spec_statement_has_an_entry() {
         "agents never change signers",
         "agents never change recipients",
         "agents never change guard exceptions",
+        "agents never edit spec-check exemptions",
     ] {
         assert!(labels.contains(&needed), "missing {needed:?} in {labels:?}");
     }

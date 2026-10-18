@@ -233,6 +233,10 @@ pub const AGENTS_RULES: &[(&str, &str)] = &[
     ("agents never change signers", "signer sets"),
     ("agents never change recipients", "recipient lists"),
     ("agents never change guard exceptions", "guard exceptions"),
+    (
+        "agents never edit spec-check exemptions",
+        "spec-check exemptions",
+    ),
 ];
 
 /// PUB-13: AGENTS.md must state each rule in [`AGENTS_RULES`] inside its
