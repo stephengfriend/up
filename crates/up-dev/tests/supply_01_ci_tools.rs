@@ -529,3 +529,143 @@ fn test_supply_01_extract_in_archive_symlink_to_regular_file_accepted() {
     assert!(meta.is_file());
     assert_ne!(meta.permissions().mode() & 0o111, 0, "made executable");
 }
+
+// ---- idempotent, race-safe installs (WR-04) ----
+
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+/// A fetcher that can be shared between threads.
+struct SyncBytesFetcher {
+    bytes: Vec<u8>,
+    calls: AtomicUsize,
+}
+
+impl Fetcher for SyncBytesFetcher {
+    fn fetch(&self, _url: &str, dest: &Path) -> Result<(), Failure> {
+        self.calls.fetch_add(1, Ordering::SeqCst);
+        fs::write(dest, &self.bytes).map_err(|e| Failure::one(format!("fake fetch: {e}")))
+    }
+}
+
+fn install_dir(root: &Path, sha: &str) -> PathBuf {
+    tools_dir(root).join(format!("demo-1.0.0-{}", &sha[..12]))
+}
+
+#[test]
+fn test_supply_01_install_is_idempotent_and_keeps_verified_dir() {
+    let scratch = tempfile::tempdir().unwrap();
+    let root = tempfile::tempdir().unwrap();
+    let bytes = demo_archive(scratch.path());
+    let sha = sha_of(&bytes, scratch.path());
+    let versions = pin_for(&sha);
+    let fetcher = BytesFetcher::new(bytes);
+
+    let first = ensure_tool_with(
+        root.path(),
+        &versions,
+        "demo",
+        Target::Aarch64AppleDarwin,
+        &fetcher,
+    )
+    .expect("first install");
+    let dir = install_dir(root.path(), &sha);
+    assert_eq!(
+        fs::read_to_string(dir.join(".complete")).unwrap().trim(),
+        sha,
+        "the install carries a completion marker holding the archive hash"
+    );
+    // Something that lives in the verified directory (as a venv symlink target would).
+    fs::write(dir.join("sentinel"), "still here").unwrap();
+
+    let second = ensure_tool_with(
+        root.path(),
+        &versions,
+        "demo",
+        Target::Aarch64AppleDarwin,
+        &PanicFetcher,
+    )
+    .expect("second install reuses the verified directory");
+    assert_eq!(first, second);
+    assert!(
+        dir.join("sentinel").exists(),
+        "a verified install directory must not be deleted and recreated"
+    );
+}
+
+#[test]
+fn test_supply_01_install_without_valid_marker_is_replaced() {
+    let scratch = tempfile::tempdir().unwrap();
+    let root = tempfile::tempdir().unwrap();
+    let bytes = demo_archive(scratch.path());
+    let sha = sha_of(&bytes, scratch.path());
+    let versions = pin_for(&sha);
+    ensure_tool_with(
+        root.path(),
+        &versions,
+        "demo",
+        Target::Aarch64AppleDarwin,
+        &BytesFetcher::new(bytes.clone()),
+    )
+    .expect("first install");
+    let dir = install_dir(root.path(), &sha);
+    fs::write(dir.join(".complete"), "not the pinned hash\n").unwrap();
+    fs::write(dir.join("sentinel"), "tamper").unwrap();
+
+    ensure_tool_with(
+        root.path(),
+        &versions,
+        "demo",
+        Target::Aarch64AppleDarwin,
+        &BytesFetcher::new(bytes),
+    )
+    .expect("an unverified directory is reinstalled from the verified archive");
+    assert_eq!(
+        fs::read_to_string(dir.join(".complete")).unwrap().trim(),
+        sha
+    );
+    assert!(
+        !dir.join("sentinel").exists(),
+        "reinstalled from the archive"
+    );
+}
+
+#[test]
+fn test_supply_01_concurrent_installs_all_succeed() {
+    let scratch = tempfile::tempdir().unwrap();
+    let bytes = demo_archive(scratch.path());
+    let sha = sha_of(&bytes, scratch.path());
+    let versions = pin_for(&sha);
+    let fetcher = SyncBytesFetcher {
+        bytes,
+        calls: AtomicUsize::new(0),
+    };
+    for _round in 0..5 {
+        let root = tempfile::tempdir().unwrap();
+        std::thread::scope(|scope| {
+            let handles: Vec<_> = (0..8)
+                .map(|_| {
+                    scope.spawn(|| {
+                        ensure_tool_with(
+                            root.path(),
+                            &versions,
+                            "demo",
+                            Target::Aarch64AppleDarwin,
+                            &fetcher,
+                        )
+                    })
+                })
+                .collect();
+            for h in handles {
+                let bin = h.join().unwrap().expect("every racer installs or reuses");
+                let out = Command::new(&bin).output().expect("tool runs");
+                assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "demo");
+            }
+        });
+        let leftovers: Vec<_> = fs::read_dir(tools_dir(root.path()))
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .filter(|n| n.starts_with("tmp-"))
+            .collect();
+        assert!(leftovers.is_empty(), "temp dirs left behind: {leftovers:?}");
+    }
+}
