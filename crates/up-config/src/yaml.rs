@@ -861,6 +861,23 @@ pub fn load_file(path: &Path) -> Result<serde_json::Value, YamlError> {
     load_str_with(&src, &origin, &limits)
 }
 
+/// Seam for the workflow profile (implemented in the fix commit).
+pub fn load_file_allowing_root_keys(
+    path: &Path,
+    _allowed: &[&str],
+) -> Result<serde_json::Value, YamlError> {
+    load_file(path)
+}
+
+/// Seam for the workflow profile (implemented in the fix commit).
+pub fn load_str_allowing_root_keys(
+    src: &str,
+    origin: &str,
+    _allowed: &[&str],
+) -> Result<serde_json::Value, YamlError> {
+    load_str(src, origin)
+}
+
 /// Load a strict YAML document into `T`.
 pub fn from_str<T: serde::de::DeserializeOwned>(src: &str, origin: &str) -> Result<T, YamlError> {
     from_str_with(src, origin, &Limits::default())

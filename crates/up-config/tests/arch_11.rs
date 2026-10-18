@@ -343,3 +343,204 @@ fn test_arch_11_deserialize_error_does_not_echo_values() {
     assert!(!err.to_string().contains("hunter2"), "{err}");
     assert!(!format!("{err:?}").contains("hunter2"), "{err:?}");
 }
+
+// ---- scalar non-string keys (ARCH-11 MUST, CR-02) ----
+
+/// Plain scalars that PyYAML (YAML 1.1) or the YAML 1.2 core schema resolve to a
+/// non-string: booleans, null, integers, floats and timestamps.
+const NON_STRING_PLAIN_KEYS: &[&str] = &[
+    // booleans, YAML 1.1 and 1.2 spellings in any case
+    "yes",
+    "Yes",
+    "YES",
+    "no",
+    "No",
+    "NO",
+    "y",
+    "Y",
+    "n",
+    "N",
+    "on",
+    "On",
+    "ON",
+    "off",
+    "Off",
+    "OFF",
+    "true",
+    "True",
+    "TRUE",
+    "false",
+    "False",
+    "FALSE",
+    "yEs",
+    "tRuE",
+    // null
+    "null",
+    "Null",
+    "NULL",
+    "~",
+    "",
+    // integers
+    "0",
+    "1",
+    "01",
+    "007",
+    "09",
+    "-1",
+    "+1",
+    "0x1",
+    "0X1F",
+    "0b101",
+    "0o17",
+    "1_000",
+    "1__0",
+    "1:30",
+    "190:20:30",
+    // floats
+    "1.5",
+    "-1.5",
+    ".5",
+    "1.",
+    "1e3",
+    "1.5e+3",
+    "1_0.5",
+    "1:30.5",
+    ".inf",
+    "-.inf",
+    "+.inf",
+    ".Inf",
+    ".INF",
+    ".nan",
+    ".NaN",
+    ".NAN",
+    // timestamps
+    "2024-01-01",
+    "2024-1-1",
+    "2024-01-01T10:20:30Z",
+    "2024-01-01 10:20:30 +5",
+];
+
+#[test]
+fn test_arch_11_scalar_non_string_keys_rejected() {
+    for key in NON_STRING_PLAIN_KEYS {
+        let src = format!("{key}: value\n");
+        let err = yaml::load_str(&src, "inline")
+            .expect_err(&format!("plain key {key:?} must be refused"));
+        assert_eq!(err.kind(), "non-string-key", "{key:?}: got {err:?}");
+        let shown = err.to_string();
+        assert!(
+            shown.contains("line 1"),
+            "{key:?}: position missing: {shown}"
+        );
+        if !key.is_empty() {
+            assert!(!shown.contains(key), "{key:?} echoed: {shown}");
+        }
+    }
+}
+
+#[test]
+fn test_arch_11_scalar_non_string_keys_rejected_nested_and_flow() {
+    let nested =
+        yaml::load_str("engine:\n  settings:\n    true: a\n", "inline").expect_err("nested");
+    assert_eq!(nested.kind(), "non-string-key", "got {nested:?}");
+    assert!(nested.to_string().contains("/engine/settings"), "{nested}");
+    for src in [
+        "{1: a}\n",
+        "{yes: a}\n",
+        "outer: {null: a}\n",
+        "list:\n  - 0x1: a\n",
+    ] {
+        let err = yaml::load_str(src, "inline").expect_err(src);
+        assert_eq!(err.kind(), "non-string-key", "{src:?}: got {err:?}");
+    }
+}
+
+#[test]
+fn test_arch_11_scalar_key_fixtures_rejected() {
+    for rel in [
+        "invalid/scalar-bool-key.yml",
+        "invalid/scalar-bool-collision.yml",
+        "invalid/scalar-int-key.yml",
+        "invalid/scalar-int-collision.yml",
+        "invalid/scalar-null-key.yml",
+        "invalid/scalar-float-key.yml",
+    ] {
+        assert_eq!(refused(rel).kind(), "non-string-key", "{rel}");
+    }
+}
+
+/// `yes`/`true` and `1`/`01` collapse to one key under PyYAML; the loader must stop at the
+/// first of them rather than report two distinct keys.
+#[test]
+fn test_arch_11_pyyaml_key_collision_is_refused() {
+    for src in ["yes: a\ntrue: b\n", "1: a\n01: b\n", "on: a\nTrue: b\n"] {
+        let err = yaml::load_str(src, "inline").expect_err(src);
+        assert_eq!(err.kind(), "non-string-key", "{src:?}: got {err:?}");
+    }
+}
+
+#[test]
+fn test_arch_11_quoted_and_string_shaped_keys_load() {
+    let value = yaml::load_file(&fixture("valid/quoted-scalar-keys.yml")).expect("loads");
+    assert_eq!(value["1"], "one");
+    assert_eq!(value["yes"], "affirmative");
+    assert_eq!(value["null"], "nothing");
+    assert_eq!(value["0x1"], "hex");
+    assert_eq!(value[""], "empty");
+    assert_eq!(value["1.2.3"], "version");
+    assert_eq!(value["v1"], "prefixed");
+    assert_eq!(value["10-20"], "range");
+    assert_eq!(value["x"], "coordinate");
+    for src in [
+        "yess: a\n",
+        "nul: a\n",
+        "_1: a\n",
+        "1_x: a\n",
+        "0x: a\n",
+        "0xZ: a\n",
+        "1e: a\n",
+        ".: a\n",
+        "..: a\n",
+        ".i: a\n",
+        "1.2.3.4: a\n",
+        "2024-01-01x: a\n",
+        "on_: a\n",
+        "-: a\n",
+    ] {
+        yaml::load_str(src, "inline").unwrap_or_else(|e| panic!("{src:?} must load: {e}"));
+    }
+}
+
+/// The repository's own engine YAML must keep loading under the stricter profile.
+#[test]
+fn test_arch_11_engine_yaml_files_still_load() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    for rel in [
+        "defaults.yml",
+        "versions.yml",
+        ".yamllint.yml",
+        ".github/zizmor.yml",
+    ] {
+        yaml::load_file(&root.join(rel)).unwrap_or_else(|e| panic!("{rel}: {e}"));
+    }
+}
+
+/// GitHub workflows are not `up`-parsed (not in ARCH-11's file list) and always have a
+/// top-level `on:`. The default profile refuses it; the workflow-specific entry point
+/// accepts exactly that root key and nothing else.
+#[test]
+fn test_arch_11_workflow_on_key_only_through_explicit_root_allowance() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let ci = root.join(".github/workflows/ci.yml");
+    let err = yaml::load_file(&ci).expect_err("default profile refuses `on:`");
+    assert_eq!(err.kind(), "non-string-key", "got {err:?}");
+    let doc = yaml::load_file_allowing_root_keys(&ci, &["on"]).expect("allowed root key");
+    assert!(doc.get("on").is_some());
+    // Only the named key, only at the root.
+    let other = yaml::load_str_allowing_root_keys("on: a\nyes: b\n", "inline", &["on"])
+        .expect_err("other bool key");
+    assert_eq!(other.kind(), "non-string-key", "got {other:?}");
+    let nested = yaml::load_str_allowing_root_keys("jobs:\n  on: a\n", "inline", &["on"])
+        .expect_err("nested key");
+    assert_eq!(nested.kind(), "non-string-key", "got {nested:?}");
+}
