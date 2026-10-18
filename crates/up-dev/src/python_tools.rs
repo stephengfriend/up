@@ -1,4 +1,15 @@
-//! Helper for the hash-locked Python CI tools (SUPPLY-07, D1-06).
-//!
-//! Holds no code yet; plan 01-08 fills it in for the yamllint and ansible-lint
-//! checks. It has no subcommand of its own.
+//! Hash-locked Python CI tools (SUPPLY-07, D1-06).
+
+use std::path::PathBuf;
+
+use crate::check::{Ctx, Failure};
+
+/// Check `tools/ci-requirements.txt` text before uv sees it.
+pub fn check_requirements_lock(_text: &str) -> Result<(), Failure> {
+    Ok(())
+}
+
+/// Build (or reuse) the CI venv and return its `bin` directory.
+pub fn ensure_venv(_ctx: &Ctx) -> Result<PathBuf, Failure> {
+    Err(Failure::pending("python-tools", "01-08"))
+}
