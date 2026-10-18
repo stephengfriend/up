@@ -1,0 +1,26 @@
+schema_version: 1
+name: example
+remote: git@github.com:example-login/example.git
+visibility: private
+engine:
+  url: https://github.com/example-login/up.git
+  version: 0.3.0
+  commit: "0000000000000000000000000000000000000000"
+vault:
+  default: Example
+  classes: { servers: Example-Servers, pis: Example-Pis }
+mirror: {}
+taps: [example-login/tools]
+mise_backends: [pipx]
+notify:
+  webhook: catalog:notify_webhook
+  heartbeat: catalog:notify_heartbeat
+privacy:
+  denylist: secrets/privacy.sops.yaml
+rotation_days: 90
+secrets:
+  root_backend: sops
+  user_backend: op
+  classes:
+    servers: { root_backend: op }
+    pis: { root_backend: sops }

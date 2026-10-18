@@ -1,0 +1,11 @@
+# Quoted keys are strings whatever they look like; unquoted keys that are
+# merely string-shaped (versions, identifiers) stay strings too.
+"1": one
+'yes': affirmative
+"null": nothing
+"0x1": hex
+"": empty
+1.2.3: version
+v1: prefixed
+10-20: range
+x: coordinate

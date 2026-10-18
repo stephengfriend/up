@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:up:schema:answers",
+  "title": "up init answers file (ARCH-05, PUB-04, PUB-05)",
+  "$comment": "The answers file holds no secret values (PUB-05).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "name", "login", "secrets", "signers", "host"],
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "name": { "$ref": "urn:up:schema:defs#/$defs/name" },
+    "login": { "$ref": "urn:up:schema:defs#/$defs/login" },
+    "visibility": { "$ref": "urn:up:schema:defs#/$defs/visibility", "default": "private" },
+    "secrets": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["backends"],
+      "properties": {
+        "backends": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": ["sops", "op", "bw", "bws", "fake"]
+          }
+        }
+      }
+    },
+    "vault": { "$ref": "urn:up:schema:defs#/$defs/vault_config" },
+    "signers": {
+      "$comment": "At least two entries: exactly one primary and at least one backup.",
+      "type": "array",
+      "minItems": 2,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["principal", "key", "role"],
+        "properties": {
+          "principal": { "$ref": "urn:up:schema:defs#/$defs/signer_principal" },
+          "key": { "$ref": "urn:up:schema:defs#/$defs/ssh_signing_key" },
+          "role": { "type": "string", "enum": ["primary", "backup"] }
+        }
+      },
+      "allOf": [
+        {
+          "contains": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["role"],
+            "properties": {
+              "principal": true,
+              "key": true,
+              "role": { "const": "primary" }
+            }
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["role"],
+            "properties": {
+              "principal": true,
+              "key": true,
+              "role": { "const": "backup" }
+            }
+          },
+          "minContains": 1
+        }
+      ]
+    },
+    "host": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["alias", "user", "roles"],
+      "properties": {
+        "alias": { "$ref": "urn:up:schema:defs#/$defs/host_alias" },
+        "user": { "$ref": "urn:up:schema:defs#/$defs/user" },
+        "roles": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "urn:up:schema:defs#/$defs/role" }
+        }
+      }
+    }
+  }
+}

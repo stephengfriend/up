@@ -1,0 +1,6 @@
+---
+- name: Converge this host
+  hosts: all
+  connection: local
+  gather_facts: true
+  roles: []

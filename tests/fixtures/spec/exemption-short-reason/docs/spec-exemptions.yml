@@ -1,0 +1,4 @@
+schema_version: 1
+negative_ac:
+  - id: ALPHA-02
+    reason: too short

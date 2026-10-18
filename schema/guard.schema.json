@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:up:schema:guard",
+  "title": "~/.config/up/guard.yml (ARCH-05, GRD-08)",
+  "$comment": "Denylist entries are matched in memory only, so they are free single-line text: ../x, a;b and non-ASCII content are legitimate, line-breaking characters are not.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "denylist"],
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "denylist": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "urn:up:schema:defs#/$defs/single_line",
+        "minLength": 3,
+        "maxLength": 256
+      }
+    }
+  }
+}

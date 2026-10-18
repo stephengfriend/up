@@ -1,0 +1,25 @@
+[package]
+name = "up-dev"
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[lib]
+name = "up_dev"
+path = "src/lib.rs"
+
+[[bin]]
+name = "up-dev"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+up-config = { path = "../up-config" }
+
+[dev-dependencies]
+tempfile.workspace = true

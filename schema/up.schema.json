@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:up:schema:up",
+  "title": "up.yml (ARCH-05)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "name", "remote", "visibility", "engine"],
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "name": { "$ref": "urn:up:schema:defs#/$defs/name" },
+    "remote": { "$ref": "urn:up:schema:defs#/$defs/instance_remote" },
+    "visibility": { "$ref": "urn:up:schema:defs#/$defs/visibility" },
+    "engine": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["url", "version", "commit"],
+      "properties": {
+        "url": { "$ref": "urn:up:schema:defs#/$defs/engine_url" },
+        "version": { "$ref": "urn:up:schema:defs#/$defs/engine_version" },
+        "commit": { "$ref": "urn:up:schema:defs#/$defs/git_commit" }
+      }
+    },
+    "vault": { "$ref": "urn:up:schema:defs#/$defs/vault_config" },
+    "mirror": {
+      "$comment": "No keys are accepted in v1, so only {} validates; LAN mirrors are deferred to v2.",
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false
+    },
+    "taps": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "$ref": "urn:up:schema:defs#/$defs/homebrew_tap" }
+    },
+    "mise_backends": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "$ref": "urn:up:schema:defs#/$defs/mise_backend" }
+    },
+    "notify": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "webhook": { "$ref": "urn:up:schema:defs#/$defs/catalog_ref" },
+        "heartbeat": { "$ref": "urn:up:schema:defs#/$defs/catalog_ref" }
+      }
+    },
+    "privacy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "denylist": { "$ref": "urn:up:schema:defs#/$defs/sops_path" }
+      }
+    },
+    "rotation_days": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 365,
+      "default": 90
+    },
+    "secrets": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "root_backend": { "$ref": "urn:up:schema:defs#/$defs/root_backend" },
+        "user_backend": {
+          "type": "string",
+          "enum": ["op", "bw", "none"]
+        },
+        "classes": {
+          "type": "object",
+          "propertyNames": { "$ref": "urn:up:schema:defs#/$defs/class" },
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "root_backend": { "$ref": "urn:up:schema:defs#/$defs/root_backend" }
+            }
+          }
+        }
+      }
+    }
+  }
+}

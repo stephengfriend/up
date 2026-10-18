@@ -1,0 +1,3 @@
+# expect: non-string-key
+yes: a
+true: b

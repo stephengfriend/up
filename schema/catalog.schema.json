@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:up:schema:catalog",
+  "title": "secrets/catalog.yml (ARCH-05, SEC-01)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "secrets"],
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "secrets": {
+      "type": "object",
+      "propertyNames": { "$ref": "urn:up:schema:defs#/$defs/catalog_key" },
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "minProperties": 1,
+        "properties": {
+          "op": { "$ref": "urn:up:schema:defs#/$defs/op_ref" },
+          "bw": { "$ref": "urn:up:schema:defs#/$defs/bw_ref" },
+          "bws": { "$ref": "urn:up:schema:defs#/$defs/bws_ref" },
+          "sops": { "$ref": "urn:up:schema:defs#/$defs/sops_ref" },
+          "fake": {
+            "$ref": "urn:up:schema:defs#/$defs/single_line",
+            "maxLength": 256
+          }
+        }
+      }
+    }
+  }
+}

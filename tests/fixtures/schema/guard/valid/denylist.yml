@@ -1,0 +1,5 @@
+schema_version: 1
+denylist:
+  - example-personal-string
+  - "10.1.2.3"
+  - ../example

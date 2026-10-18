@@ -1,0 +1,2 @@
+# expect: tag
+value: !custom 12

@@ -1,0 +1,9 @@
+# zizmor policy for the engine's workflows (SUPPLY-02).
+# Every action, local or third-party, is pinned to a full commit SHA.
+# Findings on the engine's workflows are fixed in the workflow; this file
+# carries no ignore or disable entries.
+rules:
+  unpinned-uses:
+    config:
+      policies:
+        "*": hash-pin

@@ -1,0 +1,5 @@
+# expect: /secrets/smtp_password/sops pattern
+schema_version: 1
+secrets:
+  smtp_password:
+    sops: ../secrets/hosts/host-01.sops.yaml#smtp_password

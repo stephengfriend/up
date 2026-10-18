@@ -1,0 +1,112 @@
+# Pinned artifacts (SUPPLY-01, D1-05). Each tool is a download (version, use, assets), a requirements
+# file (version, use, requirements) or a system minimum (use, minimum). Asset keys are `up` release targets.
+schema_version: 1
+tools:
+  # upstream publishes no checksums; hashes recorded at pin time 2026-10-18
+  shellcheck:
+    version: 0.11.0
+    use: [ci]
+    assets:
+      aarch64-apple-darwin:
+        url: https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.darwin.aarch64.tar.gz
+        sha256: "339b930feb1ea764467013cc1f72d09cd6b869ebf1013296ba9055ab2ffbd26f"
+        bin: shellcheck-v0.11.0/shellcheck
+      aarch64-unknown-linux-musl:
+        url: https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.linux.aarch64.tar.gz
+        sha256: "68a8133197a50beb8803f8d42f9908d1af1c5540d4bb05fdfca8c1fa47decefc"
+        bin: shellcheck-v0.11.0/shellcheck
+      x86_64-unknown-linux-musl:
+        url: https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.linux.x86_64.tar.gz
+        sha256: "b7af85e41cc99489dcc21d66c6d5f3685138f06d34651e6d34b42ec6d54fe6f6"
+        bin: shellcheck-v0.11.0/shellcheck
+
+  # checked against gitleaks_8.30.1_checksums.txt
+  gitleaks:
+    version: 8.30.1
+    use: [ci, toolchain]
+    assets:
+      aarch64-apple-darwin:
+        url: https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_darwin_arm64.tar.gz
+        sha256: "b40ab0ae55c505963e365f271a8d3846efbc170aa17f2607f13df610a9aeb6a5"
+        bin: gitleaks
+      aarch64-unknown-linux-musl:
+        url: https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_arm64.tar.gz
+        sha256: "e4a487ee7ccd7d3a7f7ec08657610aa3606637dab924210b3aee62570fb4b080"
+        bin: gitleaks
+      x86_64-unknown-linux-musl:
+        url: https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz
+        sha256: "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb"
+        bin: gitleaks
+
+  # checked against actionlint_1.7.12_checksums.txt
+  actionlint:
+    version: 1.7.12
+    use: [ci]
+    assets:
+      aarch64-apple-darwin:
+        url: https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_darwin_arm64.tar.gz
+        sha256: "aba9ced2dee8d27fecca3dc7feb1a7f9a52caefa1eb46f3271ea66b6e0e6953f"
+        bin: actionlint
+      aarch64-unknown-linux-musl:
+        url: https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_arm64.tar.gz
+        sha256: "325e971b6ba9bfa504672e29be93c24981eeb1c07576d730e9f7c8805afff0c6"
+        bin: actionlint
+      x86_64-unknown-linux-musl:
+        url: https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz
+        sha256: "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8"
+        bin: actionlint
+
+  # checked against the per-asset .sha256 files
+  cargo-deny:
+    version: 0.20.2
+    use: [ci]
+    assets:
+      aarch64-apple-darwin:
+        url: https://github.com/EmbarkStudios/cargo-deny/releases/download/0.20.2/cargo-deny-0.20.2-aarch64-apple-darwin.tar.gz
+        sha256: "fe67d82a10d8597a3549364cb733a3f9cc1bfff9031b7ae46384a9f2a72090c3"
+        bin: cargo-deny-0.20.2-aarch64-apple-darwin/cargo-deny
+      aarch64-unknown-linux-musl:
+        url: https://github.com/EmbarkStudios/cargo-deny/releases/download/0.20.2/cargo-deny-0.20.2-aarch64-unknown-linux-musl.tar.gz
+        sha256: "995c82be0defc7a025cae49a2aa2644ce8245c9a3318fc4103907c6a285e8c7d"
+        bin: cargo-deny-0.20.2-aarch64-unknown-linux-musl/cargo-deny
+      x86_64-unknown-linux-musl:
+        url: https://github.com/EmbarkStudios/cargo-deny/releases/download/0.20.2/cargo-deny-0.20.2-x86_64-unknown-linux-musl.tar.gz
+        sha256: "9f12ed4c49936e09b48bf862b595cde2fe64fcbd9d74dfacac6131ca824c8d5f"
+        bin: cargo-deny-0.20.2-x86_64-unknown-linux-musl/cargo-deny
+
+  # checked against the per-asset .sha256 files
+  uv:
+    version: 0.13.1
+    use: [ci]
+    assets:
+      aarch64-apple-darwin:
+        url: https://github.com/astral-sh/uv/releases/download/0.13.1/uv-aarch64-apple-darwin.tar.gz
+        sha256: "cfe454573412ff7380d15fc7dae5997ab53ffce72fce0a78e91ddbc84001acd2"
+        bin: uv-aarch64-apple-darwin/uv
+      aarch64-unknown-linux-musl:
+        url: https://github.com/astral-sh/uv/releases/download/0.13.1/uv-aarch64-unknown-linux-musl.tar.gz
+        sha256: "345a8308e4d1835cdfaadf692836fd3137a6d45864773f05ad7bf59442b1ba16"
+        bin: uv-aarch64-unknown-linux-musl/uv
+      x86_64-unknown-linux-musl:
+        url: https://github.com/astral-sh/uv/releases/download/0.13.1/uv-x86_64-unknown-linux-musl.tar.gz
+        sha256: "6c86040a8f045ab9adc9e3ec4cdafa03fd00e9a988ed2bf28971c7fc2d0debd0"
+        bin: uv-x86_64-unknown-linux-musl/uv
+
+  # checked against the release SHA256SUMS
+  # the Linux assets are glibc builds, for glibc hosts (key names are the up targets)
+  python:
+    version: 3.13.16+20261013
+    use: [ci]
+    assets:
+      aarch64-apple-darwin:
+        url: https://github.com/astral-sh/python-build-standalone/releases/download/20261013/cpython-3.13.16%2B20261013-aarch64-apple-darwin-install_only_stripped.tar.gz
+        sha256: "16a5332fb0dcb77f163fc8f8cbccd95be1644cc53e68e5d2a79f50afd6680a0e"
+        bin: python/bin/python3
+      aarch64-unknown-linux-musl:
+        url: https://github.com/astral-sh/python-build-standalone/releases/download/20261013/cpython-3.13.16%2B20261013-aarch64-unknown-linux-gnu-install_only_stripped.tar.gz
+        sha256: "69a30ed26198178732c37b8de0b6b5191479fbacfe526954da776befe38f18e7"
+        bin: python/bin/python3
+      x86_64-unknown-linux-musl:
+        url: https://github.com/astral-sh/python-build-standalone/releases/download/20261013/cpython-3.13.16%2B20261013-x86_64-unknown-linux-gnu-install_only_stripped.tar.gz
+        sha256: "d0080766b6b74aeb81e1949ef0d9a20e6c17f7b160fb295a69b936ccb17660be"
+        bin: python/bin/python3

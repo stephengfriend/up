@@ -1,0 +1,11 @@
+# expect: /secrets/root_backend enum
+schema_version: 1
+name: example
+remote: git@github.com:example-login/example.git
+visibility: private
+engine:
+  url: https://github.com/example-login/up.git
+  version: 0.3.0
+  commit: "0000000000000000000000000000000000000000"
+secrets:
+  root_backend: bw
