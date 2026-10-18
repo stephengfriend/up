@@ -8,4 +8,4 @@ depends_on: [overview]
 
 # Alpha
 
-A synthetic design document. It exists only to exercise the spec checker.
+A synthetic design document. It exists to exercise the spec checker.

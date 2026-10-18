@@ -5,6 +5,7 @@ use std::path::Path;
 
 use crate::check::{CheckResult, Ctx, Failure};
 
+mod exemptions;
 mod keywords;
 mod parse;
 mod rules;
@@ -42,6 +43,11 @@ pub fn check_tree(docs_dir: &Path) -> Result<Report, Failure> {
     let tree = parse::read_tree(docs_dir)?;
     let mut report = Report::default();
     rules::duplicate_ids(&tree, &mut report.errors);
+    rules::front_matter(&tree, &mut report.errors);
+    rules::requirement_shape(&tree, &mut report.errors);
+    rules::roadmap_coverage(&tree, &mut report.errors);
+    rules::negative_acs(&tree, &mut report.errors);
+    rules::prose_words(&tree, &mut report.errors, &mut report.warnings);
     report.errors.sort();
     report.warnings.sort();
     Ok(report)

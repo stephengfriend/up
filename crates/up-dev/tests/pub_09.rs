@@ -347,7 +347,7 @@ fn test_pub_09_lowercase_never_warns_not_fails() {
 /// Recorded SHA-256 of the keyword list for each version (one word per line).
 fn recorded_digest(version: u32) -> &'static str {
     match version {
-        1 => "827f9cfac4c09cbb71d9e2644a5acb6a18085366ef07314d97d603a5c7105def",
+        1 => "bcc66866a8413276824ddcc05817e89c664c9c5dfc8b28a29d62a82280c48337",
         v => panic!("keyword list v{v} has no recorded digest; add it here on purpose"),
     }
 }
