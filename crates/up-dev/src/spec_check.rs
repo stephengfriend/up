@@ -5,8 +5,11 @@ use std::path::Path;
 
 use crate::check::{CheckResult, Ctx, Failure};
 
+mod keywords;
 mod parse;
 mod rules;
+
+pub use keywords::{KEYWORD_LIST_VERSION, KEYWORDS};
 
 /// One problem found in the spec tree.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
