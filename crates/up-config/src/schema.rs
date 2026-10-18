@@ -23,9 +23,17 @@ pub enum Kind {
     Host,
     Up,
     Catalog,
+    Answers,
+    Guard,
 }
 
-const ALL_KINDS: &[Kind] = &[Kind::Host, Kind::Up, Kind::Catalog];
+const ALL_KINDS: &[Kind] = &[
+    Kind::Host,
+    Kind::Up,
+    Kind::Catalog,
+    Kind::Answers,
+    Kind::Guard,
+];
 
 impl Kind {
     /// Number of kinds; sizes the per-kind validator cache.
@@ -42,6 +50,8 @@ impl Kind {
             Kind::Host => "host",
             Kind::Up => "up",
             Kind::Catalog => "catalog",
+            Kind::Answers => "answers",
+            Kind::Guard => "guard",
         }
     }
 
@@ -51,6 +61,8 @@ impl Kind {
             Kind::Host => "urn:up:schema:host",
             Kind::Up => "urn:up:schema:up",
             Kind::Catalog => "urn:up:schema:catalog",
+            Kind::Answers => "urn:up:schema:answers",
+            Kind::Guard => "urn:up:schema:guard",
         }
     }
 
@@ -59,6 +71,8 @@ impl Kind {
             Kind::Host => 0,
             Kind::Up => 1,
             Kind::Catalog => 2,
+            Kind::Answers => 3,
+            Kind::Guard => 4,
         }
     }
 }
@@ -124,6 +138,14 @@ pub fn embedded_sources() -> &'static [(&'static str, &'static str)] {
         (
             "catalog.schema.json",
             include_str!("../../../schema/catalog.schema.json"),
+        ),
+        (
+            "answers.schema.json",
+            include_str!("../../../schema/answers.schema.json"),
+        ),
+        (
+            "guard.schema.json",
+            include_str!("../../../schema/guard.schema.json"),
         ),
     ]
 }

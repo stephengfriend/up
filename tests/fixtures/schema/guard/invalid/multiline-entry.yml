@@ -1,0 +1,4 @@
+# expect: /denylist/0 pattern
+schema_version: 1
+denylist:
+  - "first line\nsecond line"

@@ -74,6 +74,8 @@ fn rows() -> Vec<Row> {
     const HOST: &str = "valid/with-roles.yml";
     const UP: &str = "valid/full.yml";
     const CATALOG: &str = "valid/all-backends.yml";
+    const ANSWERS: &str = "valid/full.yml";
+    const GUARD: &str = "valid/denylist.yml";
     vec![
         val(Kind::Host, HOST, "/name"),
         val(Kind::Host, HOST, "/instance"),
@@ -104,6 +106,20 @@ fn rows() -> Vec<Row> {
         val(Kind::Catalog, CATALOG, "/secrets/smtp_password/bws"),
         val(Kind::Catalog, CATALOG, "/secrets/smtp_password/sops"),
         line(Kind::Catalog, CATALOG, "/secrets/smtp_password/fake"),
+        val(Kind::Answers, ANSWERS, "/name"),
+        val(Kind::Answers, ANSWERS, "/login"),
+        val(Kind::Answers, ANSWERS, "/visibility"),
+        val(Kind::Answers, ANSWERS, "/secrets/backends/0"),
+        val(Kind::Answers, ANSWERS, "/vault/default"),
+        val(Kind::Answers, ANSWERS, "/vault/classes/servers"),
+        key(Kind::Answers, ANSWERS, "/vault/classes/servers"),
+        val(Kind::Answers, ANSWERS, "/signers/0/principal"),
+        val(Kind::Answers, ANSWERS, "/signers/0/key"),
+        val(Kind::Answers, ANSWERS, "/signers/0/role"),
+        val(Kind::Answers, ANSWERS, "/host/alias"),
+        val(Kind::Answers, ANSWERS, "/host/user"),
+        val(Kind::Answers, ANSWERS, "/host/roles/0"),
+        line(Kind::Guard, GUARD, "/denylist/0"),
     ]
 }
 
@@ -469,4 +485,262 @@ fn test_arch_05_catalog_fake_length_boundary() {
         "got {:?}",
         pointers(&violations)
     );
+}
+
+#[test]
+fn test_arch_05_answers_valid_fixtures_pass() {
+    assert_valid_fixtures(Kind::Answers, &["valid/minimal.yml", "valid/full.yml"]);
+}
+
+#[test]
+fn test_arch_05_guard_valid_fixtures_pass() {
+    assert_valid_fixtures(Kind::Guard, &["valid/denylist.yml"]);
+}
+
+#[test]
+fn test_arch_05_hostile_values_rejected_answers() {
+    assert_hostile_rejected(Kind::Answers);
+}
+
+#[test]
+fn test_arch_05_hostile_values_rejected_guard() {
+    // ../x, a;b and a lookalike are legitimate denylist content; assert_hostile_rejected
+    // checks both that they validate and that line-breaking, NUL and empty values do not.
+    assert_hostile_rejected(Kind::Guard);
+}
+
+#[test]
+fn test_arch_05_guard_denylist_length_bounds() {
+    let mut doc = load(Kind::Guard, "valid/denylist.yml");
+    for (len, ok) in [(2, false), (3, true), (256, true), (257, false)] {
+        doc["denylist"] = json!(["x".repeat(len)]);
+        let result = schema::validate(Kind::Guard, &doc);
+        assert_eq!(result.is_ok(), ok, "{len} characters: {result:?}");
+        if let Err(violations) = result {
+            assert!(
+                violations.iter().any(|v| v.pointer == "/denylist/0"),
+                "got {:?}",
+                pointers(&violations)
+            );
+        }
+    }
+}
+
+#[test]
+fn test_arch_05_answers_requires_two_signers() {
+    let violations = violations_of(Kind::Answers, "invalid/one-signer.yml");
+    assert!(
+        violations
+            .iter()
+            .any(|v| v.pointer == "/signers" && v.keyword == "minItems"),
+        "got {:?}",
+        pointers(&violations)
+    );
+}
+
+#[test]
+fn test_arch_05_answers_requires_one_primary_and_a_backup() {
+    let mut doc = load(Kind::Answers, "valid/minimal.yml");
+    let primary = doc["signers"][0].clone();
+    let backup = doc["signers"][1].clone();
+    let cases = [
+        ("two primaries", vec![primary.clone(), primary.clone()]),
+        ("two backups", vec![backup.clone(), backup.clone()]),
+    ];
+    for (what, signers) in cases {
+        doc["signers"] = Value::Array(signers);
+        let violations = schema::validate(Kind::Answers, &doc)
+            .err()
+            .unwrap_or_else(|| panic!("{what} accepted"));
+        assert!(
+            violations.iter().any(|v| v.pointer == "/signers"),
+            "{what}: got {:?}",
+            pointers(&violations)
+        );
+    }
+}
+
+#[test]
+fn test_arch_05_answers_rejects_secret_value_field() {
+    // PUB-05: the answers file never carries secret values.
+    let violations = violations_of(Kind::Answers, "invalid/secret-value-field.yml");
+    assert!(
+        violations
+            .iter()
+            .any(|v| v.pointer.is_empty() && v.keyword == "additionalProperties"),
+        "got {:?}",
+        pointers(&violations)
+    );
+}
+
+#[test]
+fn test_arch_05_guard_rejects_multiline_entry() {
+    let violations = violations_of(Kind::Guard, "invalid/multiline-entry.yml");
+    assert!(
+        violations
+            .iter()
+            .any(|v| v.pointer == "/denylist/0" && v.keyword == "pattern"),
+        "got {:?}",
+        pointers(&violations)
+    );
+}
+
+/// Walks the embedded schemas, resolving `$ref`s inside the embedded set only.
+struct Walker {
+    docs: std::collections::BTreeMap<String, Value>,
+}
+
+impl Walker {
+    fn new() -> Walker {
+        let docs = schema::embedded_sources()
+            .iter()
+            .map(|(_, text)| {
+                let doc: Value = serde_json::from_str(text).expect("embedded schema is JSON");
+                (doc["$id"].as_str().expect("$id").to_string(), doc)
+            })
+            .collect();
+        Walker { docs }
+    }
+
+    /// Follow `$ref` links from `node` (found in document `doc`) to the target schema.
+    fn resolve<'a>(&'a self, doc: &'a str, node: &'a Value) -> (&'a str, &'a Value) {
+        let (mut doc, mut node) = (doc, node);
+        while let Some(reference) = node.get("$ref").and_then(Value::as_str) {
+            let (id, pointer) = reference.split_once('#').unwrap_or((reference, ""));
+            let (target_id, target) = if id.is_empty() {
+                (doc, &self.docs[doc])
+            } else {
+                let (key, value) = self
+                    .docs
+                    .get_key_value(id)
+                    .unwrap_or_else(|| panic!("$ref to a schema that is not embedded: {id}"));
+                (key.as_str(), value)
+            };
+            doc = target_id;
+            node = if pointer.is_empty() {
+                target
+            } else {
+                target
+                    .pointer(pointer)
+                    .unwrap_or_else(|| panic!("dangling $ref {reference}"))
+            };
+        }
+        (doc, node)
+    }
+
+    fn is_string(node: &Value) -> bool {
+        node.get("type").and_then(Value::as_str) == Some("string")
+    }
+
+    /// Normalised paths of every string-typed value: array items and map values are `*`,
+    /// and the names of a map's keys are `<map>/{key}`.
+    fn string_paths(&self, kind: Kind) -> std::collections::BTreeSet<String> {
+        let mut out = std::collections::BTreeSet::new();
+        let root = &self.docs[kind.id()];
+        self.collect(kind.id(), root, "", &mut out);
+        out
+    }
+
+    fn collect(
+        &self,
+        doc: &str,
+        node: &Value,
+        path: &str,
+        out: &mut std::collections::BTreeSet<String>,
+    ) {
+        let (doc, node) = self.resolve(doc, node);
+        if Self::is_string(node) {
+            out.insert(path.to_string());
+        }
+        if let Some(props) = node.get("properties").and_then(Value::as_object) {
+            for (name, child) in props {
+                self.collect(doc, child, &format!("{path}/{name}"), out);
+            }
+        }
+        if let Some(items) = node.get("items") {
+            self.collect(doc, items, &format!("{path}/*"), out);
+        }
+        if let Some(values) = node.get("additionalProperties").filter(|v| v.is_object()) {
+            self.collect(doc, values, &format!("{path}/*"), out);
+            if let Some(names) = node.get("propertyNames") {
+                self.collect(doc, names, &format!("{path}/{{key}}"), out);
+            }
+        }
+    }
+
+    /// The normalised path a row's concrete pointer covers.
+    fn row_path(&self, row: &Row) -> String {
+        let pointer = match row.mode {
+            Mode::Value => row.pointer,
+            Mode::Key => row.pointer.rsplit_once('/').expect("key pointer").0,
+        };
+        let root = &self.docs[row.kind.id()];
+        let (mut doc, mut node) = (row.kind.id(), root);
+        let mut path = String::new();
+        for segment in pointer.split('/').skip(1) {
+            let (d, n) = self.resolve(doc, node);
+            doc = d;
+            let next = if let Some(child) = n.pointer(&format!("/properties/{segment}")) {
+                path.push_str(&format!("/{segment}"));
+                child
+            } else if let Some(items) = n.get("items") {
+                path.push_str("/*");
+                items
+            } else if let Some(values) = n.get("additionalProperties").filter(|v| v.is_object()) {
+                path.push_str("/*");
+                values
+            } else {
+                panic!(
+                    "row {} does not follow the schema at {segment}",
+                    row.pointer
+                );
+            };
+            node = next;
+        }
+        if row.mode == Mode::Key {
+            path.push_str("/{key}");
+        }
+        path
+    }
+}
+
+#[test]
+fn test_arch_05_every_string_field_covered() {
+    let walker = Walker::new();
+    let rows = rows();
+    let mut total = 0;
+    for kind in Kind::all() {
+        let covered: std::collections::BTreeSet<String> = rows
+            .iter()
+            .filter(|r| r.kind == *kind)
+            .map(|r| walker.row_path(r))
+            .collect();
+        let fields = walker.string_paths(*kind);
+        total += fields.len();
+        let missing: Vec<&String> = fields.difference(&covered).collect();
+        assert!(
+            missing.is_empty(),
+            "{}: string fields without a hostile-value row: {missing:?}",
+            kind.base()
+        );
+        let extra: Vec<&String> = covered.difference(&fields).collect();
+        assert!(
+            extra.is_empty(),
+            "{}: rows that are not string fields: {extra:?}",
+            kind.base()
+        );
+    }
+    assert!(
+        total >= 40,
+        "only {total} string fields found; walker is broken"
+    );
+}
+
+#[test]
+fn test_arch_05_embedded_set_is_closed() {
+    // Every $ref in every embedded schema resolves inside the embedded set.
+    let walker = Walker::new();
+    for kind in Kind::all() {
+        let _ = walker.string_paths(*kind);
+    }
 }
