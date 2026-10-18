@@ -183,7 +183,11 @@ fn literal_strings(v: &Value) -> Option<Vec<String>> {
     };
     items
         .into_iter()
-        .map(|i| i.as_str().filter(|s| !s.contains("${{")).map(str::to_string))
+        .map(|i| {
+            i.as_str()
+                .filter(|s| !s.contains("${{"))
+                .map(str::to_string)
+        })
         .collect()
 }
 
