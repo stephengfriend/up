@@ -15,6 +15,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use sha2::{Digest, Sha256};
+
 use crate::check::{Ctx, Failure};
 use crate::tools;
 
@@ -286,12 +288,21 @@ fn run_uv(mut cmd: Command, what: &str) -> Result<(), Failure> {
     }
 }
 
-/// What the venv directory name and completion marker are derived from (seam; the fix commit
-/// adds the interpreter and uv pins).
-pub fn venv_key(lock_text: &str, _python_sha256: &str, _uv_sha256: &str) -> String {
-    let mut hasher = <sha2::Sha256 as sha2::Digest>::new();
-    sha2::Digest::update(&mut hasher, lock_text.as_bytes());
-    sha2::Digest::finalize(hasher)
+/// What the venv directory name and completion marker are derived from: the lock text and the
+/// pinned archive hashes of the interpreter and of uv. Each field is length-prefixed so text
+/// cannot move between fields. A change to any of the three yields a new venv, so a stale one
+/// built on an older interpreter or resolver is never reused (SUPPLY-01).
+pub fn venv_key(lock_text: &str, python_sha256: &str, uv_sha256: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(b"up-dev venv v1\n");
+    for field in [lock_text, python_sha256, uv_sha256] {
+        hasher.update(field.len().to_string().as_bytes());
+        hasher.update(b":");
+        hasher.update(field.as_bytes());
+        hasher.update(b"\n");
+    }
+    hasher
+        .finalize()
         .iter()
         .map(|b| format!("{b:02x}"))
         .collect()
@@ -314,22 +325,25 @@ pub fn venv_path(ctx: &Ctx) -> Result<PathBuf, Failure> {
 
 /// Build (or reuse) the CI venv and return its `bin` directory.
 ///
-/// Path: `<root>/target/up-dev-tools/venv-<first 12 hex of sha256(lock)>`. A
-/// `.complete` marker holding the lock hash is written last, so a half-built
-/// venv is rebuilt from scratch on the next call.
+/// Path: `<root>/target/up-dev-tools/venv-<first 12 hex of [venv_key]>`. A `.complete` marker
+/// holding the full key is written last, so a half-built venv is rebuilt from scratch on the
+/// next call. The lock is read once: the text that was checked and hashed is also the text uv
+/// installs from (through a private copy), so it cannot change in between.
 pub fn ensure_venv(ctx: &Ctx) -> Result<PathBuf, Failure> {
     let lock = ctx.root.join(LOCK_PATH);
     let text = fs::read_to_string(&lock)
         .map_err(|e| Failure::one(format!("python-tools: cannot read {}: {e}", lock.display())))?;
     check_requirements_lock(&text)?;
-    let lock_hash = tools::sha256_file(&lock)?;
-    let venv = ctx
-        .root
-        .join("target/up-dev-tools")
-        .join(format!("venv-{}", &lock_hash[..12]));
+    let versions = tools::load_versions(&ctx.root.join("versions.yml"))?;
+    let target = tools::host_target()?;
+    let python_sha = tools::pinned_sha256(&versions, "python", target)?;
+    let uv_sha = tools::pinned_sha256(&versions, "uv", target)?;
+    let key = venv_key(&text, &python_sha, &uv_sha);
+    let base = ctx.root.join("target/up-dev-tools");
+    let venv = base.join(format!("venv-{}", &key[..12]));
     let bin = venv.join("bin");
     let marker = venv.join(".complete");
-    if bin.is_dir() && fs::read_to_string(&marker).is_ok_and(|m| m.trim() == lock_hash) {
+    if bin.is_dir() && fs::read_to_string(&marker).is_ok_and(|m| m.trim() == key) {
         return Ok(bin);
     }
     if venv.exists() {
@@ -340,28 +354,54 @@ pub fn ensure_venv(ctx: &Ctx) -> Result<PathBuf, Failure> {
             ))
         })?;
     }
-    if let Some(parent) = venv.parent() {
-        fs::create_dir_all(parent).map_err(|e| {
-            Failure::one(format!(
-                "python-tools: cannot create {}: {e}",
-                parent.display()
-            ))
-        })?;
-    }
+    fs::create_dir_all(&base).map_err(|e| {
+        Failure::one(format!(
+            "python-tools: cannot create {}: {e}",
+            base.display()
+        ))
+    })?;
     let python = tools::ensure_tool(ctx, "python")?;
     let uv = tools::ensure_tool(ctx, "uv")?;
 
-    let mut create = uv_command(&uv, &ctx.root);
+    // The checked text, under a name only this process uses.
+    let checked_lock = base.join(format!("lock-{}.txt", std::process::id()));
+    fs::write(&checked_lock, &text).map_err(|e| {
+        Failure::one(format!(
+            "python-tools: cannot write {}: {e}",
+            checked_lock.display()
+        ))
+    })?;
+    let built = build_venv(ctx, &uv, &python, &venv, &checked_lock);
+    let _ = fs::remove_file(&checked_lock);
+    built?;
+
+    fs::write(&marker, format!("{key}\n")).map_err(|e| {
+        Failure::one(format!(
+            "python-tools: cannot write {}: {e}",
+            marker.display()
+        ))
+    })?;
+    Ok(bin)
+}
+
+fn build_venv(
+    ctx: &Ctx,
+    uv: &Path,
+    python: &Path,
+    venv: &Path,
+    lock: &Path,
+) -> Result<(), Failure> {
+    let mut create = uv_command(uv, &ctx.root);
     create
         .args(["venv", "--no-config", "--python"])
-        .arg(&python)
-        .arg(&venv);
+        .arg(python)
+        .arg(venv);
     run_uv(create, "venv")?;
 
-    let mut install = uv_command(&uv, &ctx.root);
+    let mut install = uv_command(uv, &ctx.root);
     install
         .args(["pip", "install", "--no-config", "--python"])
-        .arg(bin.join("python"))
+        .arg(venv.join("bin/python"))
         .args([
             "--require-hashes",
             "--no-deps",
@@ -369,14 +409,6 @@ pub fn ensure_venv(ctx: &Ctx) -> Result<PathBuf, Failure> {
             ":all:",
             "-r",
         ])
-        .arg(&lock);
-    run_uv(install, "pip install")?;
-
-    fs::write(&marker, format!("{lock_hash}\n")).map_err(|e| {
-        Failure::one(format!(
-            "python-tools: cannot write {}: {e}",
-            marker.display()
-        ))
-    })?;
-    Ok(bin)
+        .arg(lock);
+    run_uv(install, "pip install")
 }
