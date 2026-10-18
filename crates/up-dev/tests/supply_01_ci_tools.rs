@@ -441,3 +441,91 @@ fn asset_mut(versions: &mut VersionsFile) -> &mut Asset {
     let assets: &mut BTreeMap<Target, Asset> = pin.assets.as_mut().unwrap();
     assets.get_mut(&Target::Aarch64AppleDarwin).unwrap()
 }
+
+/// Pack `src/demo-1.0.0` (built by `build`, given that directory) into a tar.gz,
+/// serve it, and install it with `bin` as the pinned binary path.
+fn install_with_layout(
+    bin: &str,
+    build: impl FnOnce(&Path),
+) -> (Result<PathBuf, Failure>, tempfile::TempDir) {
+    let scratch = tempfile::tempdir().unwrap();
+    let root = tempfile::tempdir().unwrap();
+    let top = scratch.path().join("src/demo-1.0.0");
+    fs::create_dir_all(&top).unwrap();
+    build(&top);
+    let archive = scratch.path().join("demo.tar.gz");
+    // tar stores symlinks as links (no -h), so escape attempts reach extract_into intact.
+    let status = Command::new("tar")
+        .arg("-czf")
+        .arg(&archive)
+        .arg("-C")
+        .arg(scratch.path().join("src"))
+        .arg("demo-1.0.0")
+        .status()
+        .expect("tar runs");
+    assert!(status.success(), "tar -czf failed");
+    let bytes = fs::read(&archive).unwrap();
+    let sha = sha_of(&bytes, scratch.path());
+    let versions = parse_versions(&one_tool_yaml(GOOD_URL, &sha, bin, ""), "versions.yml")
+        .expect("a well-formed pin parses");
+    let result = ensure_tool_with(
+        root.path(),
+        &versions,
+        "demo",
+        Target::Aarch64AppleDarwin,
+        &BytesFetcher::new(bytes),
+    );
+    (result, root)
+}
+
+#[test]
+fn test_supply_01_extract_absolute_symlink_escape_refused() {
+    let (result, _root) = install_with_layout("demo-1.0.0/demo", |top| {
+        std::os::unix::fs::symlink("/bin/sh", top.join("demo")).unwrap();
+    });
+    let err = result.expect_err("an absolute symlink out of the archive is refused");
+    assert!(
+        msg(&err).contains("resolves outside the archive"),
+        "{}",
+        msg(&err)
+    );
+}
+
+#[test]
+fn test_supply_01_extract_directory_symlink_escape_refused() {
+    let (result, _root) = install_with_layout("demo-1.0.0/d/true", |top| {
+        std::os::unix::fs::symlink("/usr/bin", top.join("d")).unwrap();
+    });
+    let err = result.expect_err("bin through a directory symlink out of the archive is refused");
+    assert!(
+        msg(&err).contains("resolves outside the archive"),
+        "{}",
+        msg(&err)
+    );
+}
+
+#[test]
+fn test_supply_01_extract_directory_bin_refused() {
+    let (result, _root) = install_with_layout("demo-1.0.0/demo", |top| {
+        fs::create_dir(top.join("demo")).unwrap();
+        fs::write(top.join("demo/file"), "x").unwrap();
+    });
+    let err = result.expect_err("a directory is not a binary");
+    assert!(msg(&err).contains("not a regular file"), "{}", msg(&err));
+}
+
+#[test]
+fn test_supply_01_extract_in_archive_symlink_to_regular_file_accepted() {
+    let (result, root) = install_with_layout("demo-1.0.0/demo", |top| {
+        fs::create_dir(top.join("real")).unwrap();
+        let real = top.join("real/demo-real");
+        fs::write(&real, "#!/bin/sh\necho demo\n").unwrap();
+        fs::set_permissions(&real, fs::Permissions::from_mode(0o644)).unwrap();
+        std::os::unix::fs::symlink("real/demo-real", top.join("demo")).unwrap();
+    });
+    let bin = result.expect("a symlink to a regular file inside the archive installs");
+    assert!(bin.starts_with(tools_dir(root.path())), "{}", bin.display());
+    let meta = fs::metadata(&bin).unwrap();
+    assert!(meta.is_file());
+    assert_ne!(meta.permissions().mode() & 0o111, 0, "made executable");
+}
