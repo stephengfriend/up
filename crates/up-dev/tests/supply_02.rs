@@ -84,7 +84,10 @@ fn test_supply_02_passing_workflows_pass() {
             seen += 1;
         }
     }
-    assert!(seen >= 1, "at least one `# expect: pass` fixture must exist");
+    assert!(
+        seen >= 1,
+        "at least one `# expect: pass` fixture must exist"
+    );
 }
 
 #[test]
