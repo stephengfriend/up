@@ -160,6 +160,84 @@ Instance (private):
 └── .github/workflows/
 ```
 
+## Configuration schemas
+
+Each of `up.yml`, `host.yml`, the catalog, the answers file and `guard.yml` has a JSON Schema (draft 2020-12) under `engine:schema/`. `up` validates a file against its schema before using it (ARCH-05). Every schema rejects unknown keys at every level, so a misspelled or extra key is an error that names the key. Every file is parsed by the strict YAML loader first, which refuses anchors, aliases, merge keys, tags, duplicate keys and extra documents (ARCH-11).
+
+Schema files (proposed): schema/up.schema.json, schema/host.schema.json, schema/catalog.schema.json, schema/answers.schema.json, schema/guard.schema.json, plus schema/defs.schema.json for the shared constraints below.
+
+Schema field set: draft (pending owner approval)
+
+In the tables below, Status `spec` means the field and its constraint come from the design docs; `proposed` means the field, or the pattern on a spec field, is new and needs the owner's approval before the set is frozen. Patterns are anchored, ASCII only and use no lookaround.
+
+### Shared value constraints
+
+| Value | Pattern | Status | Source |
+| --- | --- | --- | --- |
+| name | `^[a-z][a-z0-9-]{0,30}$` | spec | ARCH-05 |
+| login | `^[A-Za-z0-9]+(-[A-Za-z0-9]+)*$`, at most 39 characters | proposed | GitHub login rules; BOOT-06 discovers the login |
+| host alias | `^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$` | proposed | RFC 1123 label; the `pi-03` alias in the host.yml example |
+| user | `^[a-z_][a-z0-9_-]{0,31}$` | proposed | POSIX portable user name; `user` in host.yml |
+| role | `^[a-z][a-z0-9_]{0,63}$` | proposed | Engine role names such as `telemetry_off` and the `<role>_pre` hook roles |
+| class | `^[a-z][a-z0-9_]{0,30}$` | proposed | Ansible group names; no hyphen so `<name>-<class>-<os>-<arch>-<date>` image names stay parseable (IMG-10) |
+| git commit | `^[0-9a-f]{40}$` | proposed | TRUST-06; GitHub object names are SHA-1 |
+| engine version | `^(0\|[1-9][0-9]*)\.(0\|[1-9][0-9]*)\.(0\|[1-9][0-9]*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$` | proposed | Semver without build metadata; pre-releases allowed for the `v0.0.x` releases |
+| instance remote | `^(https://github\.com/\|ssh://git@github\.com/\|git@github\.com:)[A-Za-z0-9]+(-[A-Za-z0-9]+)*/[a-z][a-z0-9-]{0,30}\.git$` | proposed | GitHub only because bootstrap pins GitHub host keys; https or ssh per BOOT-07; the repo segment is `<name>` |
+| engine URL | `^https://github\.com/[A-Za-z0-9]+(-[A-Za-z0-9]+)*/[A-Za-z0-9_-]{1,100}\.git$` | proposed | `engine.url` in the up.yml example |
+| catalog reference | `^catalog:[a-z][a-z0-9_]{0,63}$` | proposed | OPS-03: a literal URL in `notify.webhook` fails |
+| catalog key | `^[a-z][a-z0-9_]{0,63}$` | proposed | Logical names in the Catalog section of secrets.md |
+| vault name | `^[A-Za-z][A-Za-z0-9_-]{0,63}$` | proposed | The `Fleet-Servers` shape in the up.yml example |
+| sops path | `^secrets/([a-z0-9][a-z0-9_-]*/)*[a-z0-9][a-z0-9_-]*\.sops\.yaml$` | proposed | `secrets/privacy.sops.yaml` and the catalog `sops` paths |
+| sops reference | `^secrets/([a-z0-9][a-z0-9_-]*/)*[a-z0-9][a-z0-9_-]*\.sops\.yaml#[a-z][a-z0-9_]{0,63}$` | proposed | Catalog `path#key` form |
+| op reference | `^op://(\{\{ vault \}\}\|[A-Za-z][A-Za-z0-9_-]{0,63})/[A-Za-z0-9][A-Za-z0-9_-]{0,63}/[A-Za-z0-9][A-Za-z0-9_-]{0,63}$` | proposed | Catalog `op://{{ vault }}/item/field` form |
+| bw reference | `^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$` | proposed | Bitwarden secret id (a UUID) |
+| Homebrew tap | `^[a-z0-9][a-z0-9-]{0,38}/[a-z0-9][a-z0-9-]{0,99}$` | proposed | SUPPLY-05 `taps` allowlist |
+| mise backend | `^[a-z][a-z0-9-]{0,30}$` | proposed | SUPPLY-05 backend allowlist |
+| SSH signing key | `^(sk-ssh-ed25519@openssh\.com\|ssh-ed25519) [A-Za-z0-9+/]{68,}={0,2}$`, no comment field | proposed | Signer sets are hardware-key ed25519 (TRUST-06) |
+| signer principal | `^[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9.-]{1,253}\.[A-Za-z]{2,63}$` | proposed | `allowed_signers` principal |
+
+### up.yml fields
+
+| Field | Type | Required | Constraint | Source | Status |
+| --- | --- | --- | --- | --- | --- |
+| `schema_version` | integer | yes | const `1` | ARCH-05, ARCH-10 | spec |
+| `name` | string | yes | name | up.yml example; ARCH-05 | spec |
+| `remote` | string | yes | instance remote | up.yml example; BOOT-07 | proposed |
+| `visibility` | string | yes | `private` or `public` | guard.md repo kind and visibility; PUB-05 | spec |
+| `engine` | object | yes | keys `url`, `version`, `commit`, all required | up.yml example; ARCH-02 | spec |
+| `engine.url` | string | yes | engine URL | up.yml example | proposed |
+| `engine.version` | string | yes | engine version | up.yml example; ARCH-02 | proposed |
+| `engine.commit` | string | yes | git commit | up.yml example; TRUST-06 | proposed |
+| `vault` | object | no | keys `default`, `classes` | up.yml example; secrets.md Backends | spec |
+| `vault.default` | string | no | vault name | up.yml example | proposed |
+| `vault.classes` | map | no | class → vault name | up.yml example; SEC-04 | proposed |
+| `mirror` | object | no | no keys accepted in v1, so only `{}` validates; LAN mirrors are deferred to v2 | up.yml example; provisioning.md mirror | proposed |
+| `taps` | list | no | unique Homebrew tap entries | up.yml example; SUPPLY-05 | proposed |
+| `mise_backends` | list | no | unique mise backend entries: the backends allowed in addition to the default aqua backend | supply-chain.md mise policy; SUPPLY-05 | proposed |
+| `notify` | object | no | keys `webhook`, `heartbeat` | operations.md notifications; OPS-03, OPS-04 | spec |
+| `notify.webhook` | string | no | catalog reference; a literal URL fails | OPS-03 | proposed |
+| `notify.heartbeat` | string | no | catalog reference | OPS-04 | proposed |
+| `privacy` | object | no | key `denylist` | up.yml example; GRD-11 | spec |
+| `privacy.denylist` | string | no | sops path; a plaintext list fails | GRD-11 | proposed |
+| `rotation_days` | integer | no | 1 to 365, default 90 | secrets.md Lifecycle: cadence set in `up.yml`, default 90 days | proposed |
+| `secrets` | object | no | keys `root_backend`, `user_backend`, `classes` | secrets.md Backends table | proposed |
+| `secrets.root_backend` | string | no | one of `sops`, `op`, `bws`, `push`, `fake`; a human-session backend is not valid | secrets.md Backends; SEC-02 negative AC; SEC-13 | proposed |
+| `secrets.user_backend` | string | no | one of `op`, `bw`, `none` | secrets.md Backends | proposed |
+| `secrets.classes` | map | no | class → object with the key `root_backend` (same values as above) | secrets.md Backends; SEC-04 | proposed |
+
+`stale_after`, `maintenance_window`, `auto_reboot` and `serial` live in inventory per class (operations.md) and stay open under Q-17, so they are not `up.yml` fields.
+
+### host.yml fields
+
+| Field | Type | Required | Constraint | Source | Status |
+| --- | --- | --- | --- | --- | --- |
+| `schema_version` | integer | yes | const `1` | ARCH-05, ARCH-10 | spec |
+| `name` | string | yes | name | host.yml example; ARCH-05 | spec |
+| `instance` | string | yes | instance remote | host.yml example; BOOT-07 | proposed |
+| `host` | string | yes | host alias | host.yml example: the inventory alias, the match key | proposed |
+| `user` | string | yes | user | host.yml example: the account the user layer runs as | proposed |
+| `roles` | list | no | unique role entries, at least one; only for hosts absent from inventory | On a host section; ARCH-09 | proposed |
+
 ## Requirements
 
 - **ARCH-01** The engine MUST contain only reusable code, docs, templates and prompts; no personal hostnames, addresses, emails or secrets.
@@ -185,3 +263,5 @@ Instance (private):
   - AC: (negative) Changing a host's groups in inventory changes its applied roles on the next converge, even with `roles` present in `host.yml`.
 - **ARCH-10** The engine MUST declare the instance `schema_version` range it supports, refuse others with a migration message, and ship migrations for on-host state.
   - AC: (negative) An instance with a newer `schema_version` than supported makes `up` exit `1` with the required engine version.
+- **ARCH-11** Every YAML file `up` parses (`up.yml`, `host.yml`, the catalog, the answers file, `guard.yml`, and the engine's `defaults.yml` and `versions.yml`) MUST be parsed as a single YAML 1.2 document within resource limits and MUST be refused if it contains an anchor, alias, merge key, tag or duplicate key; the error MUST name the construct, the key path and the line.
+  - AC: (negative) Golden fixtures with an anchor, an alias, a merge key, a tag, a duplicate key and a second document are each rejected, naming the construct and its location.

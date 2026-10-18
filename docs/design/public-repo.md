@@ -37,6 +37,27 @@ All three produce the same result, because the wizard and the agent both end in 
 2. **Wizard.** `up.sh init`, or `up init` with the binary installed. It discovers your GitHub login and asks for the name, secrets backends and vaults, your signing keys from the agent, and the first host with its roles. It copies `template/`, renders `up.yml` with the running engine's version and commit, installs guard hooks and makes the first signed commit. Only after you confirm does it create the private repo, apply the rulesets and push protection, push, and bootstrap this machine.
 3. **Agent-assisted.** A coding agent reads `AGENTS.md` and `prompts/init-instance.md`, asks the same questions, writes an answers file, validates it against `schema/answers.schema.json`, and runs `up init --answers answers.yml`. The agent never signs, never holds a secrets session, and never re-implements wizard logic; the signed first commit happens at the operator's terminal.
 
+### Answers file fields
+
+The answers file holds no secret values (PUB-05). It is the input to `up init --answers` and is validated against its schema (PUB-04).
+
+| Field | Type | Required | Constraint | Source | Status |
+| --- | --- | --- | --- | --- | --- |
+| `schema_version` | integer | yes | const `1` | ARCH-05, ARCH-10 | spec |
+| `name` | string | yes | name | Wizard questions; ARCH-05 | spec |
+| `login` | string | yes | login; required so identical answers give identical instances | PUB-04 | proposed |
+| `visibility` | string | no | `private` or `public`, default `private` | PUB-05 | proposed |
+| `secrets` | object | yes | key `backends` | Wizard asks for secrets backends | proposed |
+| `secrets.backends` | list | yes | unique entries, at least one, each one of `sops`, `op`, `bw`, `bws`, `fake` | Wizard asks for secrets backends | proposed |
+| `vault` | object | no | same shape as `vault` in `up.yml` | Wizard asks for vaults | proposed |
+| `signers` | list | yes | at least two entries, each an object with `principal` and `key`, both required: primary and backup | Wizard asks for signing keys; SEC-15 and the manual path | proposed |
+| `signers[].principal` | string | yes | signer principal | SEC-15 | proposed |
+| `signers[].key` | string | yes | SSH signing key | SEC-15 | proposed |
+| `host` | object | yes | keys `alias`, `user`, `roles`, all required | Wizard asks for the first host with its roles | proposed |
+| `host.alias` | string | yes | host alias | Wizard | proposed |
+| `host.user` | string | yes | user | Wizard | proposed |
+| `host.roles` | list | yes | unique role entries, at least one | Wizard | proposed |
+
 ## AI assets
 
 - **`AGENTS.md`** is the canonical instruction file for any coding agent: repo map, test commands, spec-first rule, ID conventions, and security rules. Agents never hold a signing key or a secrets-backend session, never bypass guard, and never change signers, recipients or exceptions.

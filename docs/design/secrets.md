@@ -36,6 +36,19 @@ notify_webhook:
 
 `{{ vault }}` is the host's class vault. The engine's `up_secret` lookup reads the catalog and calls the backend; the engine's chezmoi `secret` partial reads from the root-rendered data file.
 
+### Catalog fields
+
+The catalog file shape (proposed) is `schema_version: 1` plus a `secrets:` map of logical name to entry, because a flat map cannot carry `schema_version` without colliding with the logical-name namespace. The example above changes to this shape once the owner approves it.
+
+| Field | Type | Required | Constraint | Source | Status |
+| --- | --- | --- | --- | --- | --- |
+| `schema_version` | integer | yes | const `1` | ARCH-05, ARCH-10 | spec |
+| `secrets` | map | yes | catalog key → entry; each entry has at least one backend key | Catalog example above | proposed |
+| `secrets.<key>.op` | string | no | op reference | Catalog example: `op://{{ vault }}/smtp/password` | proposed |
+| `secrets.<key>.bw` | string | no | bw reference | Catalog example: `<secret-uuid>` | proposed |
+| `secrets.<key>.sops` | string | no | sops reference | Catalog example: `path#key` | proposed |
+| `secrets.<key>.fake` | string | no | single line, 256 characters at most, a non-secret CI test value; refused outside CI by SEC-13 | SEC-13 | proposed |
+
 ## Host keys and enrollment
 
 Each host has two separate keys, both generated **on the device**:

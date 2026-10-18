@@ -23,7 +23,7 @@ Kubernetes, Talos and Flatcar are out of the engine's scope (D-38).
 
 ## M0: Foundations
 
-- Delivers: PUB-01 (skeleton paths only), PUB-09, PUB-10, PUB-12, SUPPLY-02, ARCH-05, CHG-07 (lint stage only).
+- Delivers: PUB-01 (skeleton paths only), PUB-09, PUB-10, PUB-12, SUPPLY-02, ARCH-05, ARCH-11, CHG-07 (lint stage only).
 - Scope: engine repo with `docs/` (threat model included), `AGENTS.md`, `CLAUDE.md`, `LICENSE`, `SECURITY.md`, `CONTRIBUTING.md`, `.up-engine`; Rust crate skeleton; JSON Schemas with value patterns; spec checker; CI workflow lint; engine rulesets and push protection; two hardware signing keys.
 - Exit criteria:
   - Engine CI is green: cargo test, shellcheck, yamllint, ansible-lint, gitleaks, workflow lint, spec checker.

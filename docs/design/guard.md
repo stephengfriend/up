@@ -47,6 +47,15 @@ Output is always redacted: findings name the file, line and rule, never the matc
 
 **Bypass.** Hooks fail closed. `UP_GUARD_SKIP="<reason>"` bypasses once and records the reason in a commit trailer; CI reports every trailer, and a host that applies a commit carrying one sends a notification (OPS-03).
 
+### guard.yml fields
+
+`~/.config/up/guard.yml` lets an engine working clone with no instance block personal strings (GRD-08).
+
+| Field | Type | Required | Constraint | Source | Status |
+| --- | --- | --- | --- | --- | --- |
+| `schema_version` | integer | yes | const `1` | ARCH-05, ARCH-10 | spec |
+| `denylist` | list | yes | unique single-line strings, 3 to 256 characters each, that guard blocks | GRD-08; Personal-data sources | proposed |
+
 ## Requirements
 
 - **GRD-01** `up guard install` MUST install hooks only in user-owned working clones; bootstrap with `--dev`, `up init` and `up self dev` MUST run it.
