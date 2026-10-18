@@ -1,0 +1,65 @@
+# cargo-deny policy (SUPPLY-01). Run through `tools/lint.sh cargo-deny`, which installs the
+# pinned cargo-deny from versions.yml. Keys follow `cargo deny init` for cargo-deny 0.20.2.
+
+[graph]
+all-features = false
+no-default-features = false
+
+[output]
+feature-depth = 1
+
+[advisories]
+# Defaults: a known vulnerability fails. A yanked crate also fails. Exceptions are recorded by a human.
+yanked = "deny"
+ignore = []
+
+[licenses]
+# The permissive OSI licenses present in this workspace's dependency graph.
+allow = [
+    "Apache-2.0",
+    "BSD-3-Clause",
+    "MIT",
+    "MIT-0",
+    "Unicode-3.0",
+    "Zlib",
+]
+confidence-threshold = 0.8
+exceptions = []
+
+[licenses.private]
+ignore = false
+registries = []
+
+[bans]
+multiple-versions = "warn"
+wildcards = "allow"
+highlight = "all"
+workspace-default-features = "allow"
+external-default-features = "allow"
+allow = []
+# The engine's "what not to use" list (STACK.md): dynamic system TLS, C git libraries,
+# deprecated or unsound YAML crates, and an async runtime or HTTP stack in the root path.
+deny = [
+    { crate = "openssl", reason = "dynamic system TLS; the engine uses rustls" },
+    { crate = "openssl-sys", reason = "dynamic system TLS; the engine uses rustls" },
+    { crate = "native-tls", reason = "trust would depend on the host store; the engine uses rustls" },
+    { crate = "git2", reason = "C library, no SSHSIG; the engine shells out to the git CLI" },
+    { crate = "libgit2-sys", reason = "C library, no SSHSIG; the engine shells out to the git CLI" },
+    { crate = "serde_yaml", reason = "deprecated; the engine uses the strict loader in up-config" },
+    { crate = "serde_yml", reason = "unsoundness history; the engine uses the strict loader in up-config" },
+    { crate = "reqwest", reason = "async HTTP stack; the engine uses ureq" },
+    { crate = "tokio", reason = "no async runtime in the root path" },
+]
+skip = []
+skip-tree = []
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []
+
+[sources.allow-org]
+github = []
+gitlab = []
+bitbucket = []
