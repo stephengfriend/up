@@ -16,23 +16,34 @@ Everything a host runs comes from somewhere: the `up` binary, the engine tree, t
 
 ```yaml
 # versions.yml (excerpt)
-uv:
-  version: 0.x.y
-  sha256:
-    aarch64-apple-darwin: "<sha256>"
-    x86_64-unknown-linux-musl: "<sha256>"
-ansible-core:
-  version: 2.x.y
-  requirements: toolchain/requirements.txt   # pip --require-hashes
-gitleaks:
-  version: 8.x.y
-  sha256: { ... }
-sops:   { version: 3.x.y, sha256: { ... } }
-age:    { version: 1.x.y, sha256: { ... } }
-chezmoi: { version: 2.x.y, sha256: { ... } }
-git:     { minimum: "<version>" }
-openssh: { minimum: "8.1" }                   # ssh-keygen -Y verify
+schema_version: 1
+tools:
+  gitleaks:
+    version: 8.30.1
+    use: [ci, toolchain]
+    assets:
+      aarch64-apple-darwin:
+        url: https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_darwin_arm64.tar.gz
+        sha256: "<64 lowercase hex>"
+        bin: gitleaks                           # path inside the archive
+      x86_64-unknown-linux-musl:
+        url: https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz
+        sha256: "<64 lowercase hex>"
+        bin: gitleaks
+      # ... one entry per target; aarch64-unknown-linux-musl is the third
+  ansible-core:
+    version: 2.x.y
+    use: [toolchain]
+    requirements: toolchain/requirements.txt    # pip --require-hashes
+  git:
+    use: [toolchain]
+    minimum: "<version>"
+  openssh:
+    use: [toolchain]
+    minimum: "8.1"                              # ssh-keygen -Y verify
 ```
+
+Asset keys are the `up` release targets (`aarch64-apple-darwin`, `aarch64-unknown-linux-musl`, `x86_64-unknown-linux-musl`) and name the host platform; the asset itself is whatever build runs there. Each asset has an `https://github.com/` `url`, a lowercase 64-hex `sha256` and the `bin` path inside the archive, and `use` lists the consumers (`ci`, `toolchain`, `build`). CI tooling, the root toolchain and instance overrides (CHG-04) share this one format, and a tool without a pin for the host target is refused rather than fetched unpinned.
 
 The root toolchain (`/opt/up/toolchain/<hash>`) is built only from these artifacts. Security-relevant tools (sops, age, gitleaks, chezmoi, `op`, `bws`) come from checksummed downloads into the toolchain, not from rolling Homebrew.
 

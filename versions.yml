@@ -1,3 +1,21 @@
-# Pinned artifacts with SHA-256 per target (SUPPLY-01, D1-05); the format and entries land in plan 01-05.
+# Pinned artifacts (SUPPLY-01, D1-05). Each tool is a download (version, use, assets), a requirements
+# file (version, use, requirements) or a system minimum (use, minimum). Asset keys are `up` release targets.
 schema_version: 1
-tools: {}
+tools:
+  # upstream publishes no checksums; hashes recorded at pin time 2026-10-18
+  shellcheck:
+    version: 0.11.0
+    use: [ci]
+    assets:
+      aarch64-apple-darwin:
+        url: https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.darwin.aarch64.tar.gz
+        sha256: "339b930feb1ea764467013cc1f72d09cd6b869ebf1013296ba9055ab2ffbd26f"
+        bin: shellcheck-v0.11.0/shellcheck
+      aarch64-unknown-linux-musl:
+        url: https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.linux.aarch64.tar.gz
+        sha256: "68a8133197a50beb8803f8d42f9908d1af1c5540d4bb05fdfca8c1fa47decefc"
+        bin: shellcheck-v0.11.0/shellcheck
+      x86_64-unknown-linux-musl:
+        url: https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.linux.x86_64.tar.gz
+        sha256: "b7af85e41cc99489dcc21d66c6d5f3685138f06d34651e6d34b42ec6d54fe6f6"
+        bin: shellcheck-v0.11.0/shellcheck
