@@ -179,6 +179,44 @@ fn test_supply_02_self_hosted_runner_fails() {
 }
 
 #[test]
+fn test_supply_02_runner_group_fails() {
+    assert_exactly("self-hosted-group.yml", "self-hosted-runner");
+    let v = check_fixture("self-hosted-group.yml");
+    assert!(
+        v[0].message.contains("build") && v[0].message.contains("GitHub-hosted"),
+        "message must name the job and the unproven runner: {}",
+        v[0].message
+    );
+}
+
+#[test]
+fn test_supply_02_runs_on_expression_fails() {
+    for name in [
+        "self-hosted-expression.yml",
+        "self-hosted-matrix-unresolvable.yml",
+        "self-hosted-matrix-missing-key.yml",
+        "self-hosted-labels-expression.yml",
+    ] {
+        assert_exactly(name, "self-hosted-runner");
+        let v = check_fixture(name);
+        assert!(
+            v[0].message.contains("build") && v[0].message.contains("GitHub-hosted"),
+            "{name}: message must name the job and the unproven runner: {}",
+            v[0].message
+        );
+    }
+}
+
+#[test]
+fn test_supply_02_static_matrix_runs_on_passes() {
+    let v = check_fixture("runs-on-matrix-static-ok.yml");
+    assert!(v.is_empty(), "static matrix must pass:\n{}", render(&v));
+    // A static matrix that resolves to `self-hosted` still fails.
+    assert_exactly("self-hosted-matrix.yml", "self-hosted-runner");
+    assert_exactly("self-hosted-matrix-include.yml", "self-hosted-runner");
+}
+
+#[test]
 fn test_supply_02_empty_workflow_fails() {
     assert_exactly("empty-jobs.yml", "workflow-shape");
 }
