@@ -31,6 +31,10 @@ const USES: [&str; 3] = ["ci", "toolchain", "build"];
 const URL_PREFIX: &str = "https://github.com/";
 /// Hard cap on a downloaded archive (curl `--max-filesize`).
 const MAX_DOWNLOAD_BYTES: &str = "536870912";
+/// Seconds curl may spend connecting before it gives up.
+const CONNECT_TIMEOUT_SECS: &str = "20";
+/// Seconds one whole download may take; bounds a slow-drip response under the size cap.
+const MAX_TIME_SECS: &str = "600";
 
 /// The whole `versions.yml` file.
 #[derive(Debug, Clone, Deserialize)]
@@ -279,6 +283,10 @@ pub fn curl_args(url: &str, dest: &Path) -> Vec<std::ffi::OsString> {
         "5",
         "--max-filesize",
         MAX_DOWNLOAD_BYTES,
+        "--connect-timeout",
+        CONNECT_TIMEOUT_SECS,
+        "--max-time",
+        MAX_TIME_SECS,
         "--output",
     ]
     .iter()
