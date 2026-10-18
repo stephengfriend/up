@@ -221,6 +221,24 @@ pub fn check_security_md(text: &str) -> Vec<String> {
     messages
 }
 
+/// Statements PUB-13 requires in AGENTS.md `## Rules`: (label, required phrase).
+pub const AGENTS_RULES: &[(&str, &str)] = &[
+    ("agents never hold signing keys", "never hold a signing key"),
+    (
+        "agents never hold secrets-backend sessions",
+        "secrets-backend session",
+    ),
+    ("agents never bypass guard", "Never bypass guard"),
+    ("agents never change signers", "signer sets"),
+    ("agents never change recipients", "recipient lists"),
+    ("agents never change guard exceptions", "guard exceptions"),
+];
+
+/// PUB-13 (stub, filled in by the GREEN commit).
+pub fn check_agents_md(_text: &str) -> Vec<String> {
+    Vec::new()
+}
+
 pub fn run(ctx: &Ctx, _args: &[String]) -> CheckResult {
     let tracked = tracked_files(&ctx.root)?;
     let mut messages = check_paths(&tracked, M0_PATHS);
