@@ -20,6 +20,18 @@ use std::process::Command;
 use crate::check::{CheckResult, Ctx, Failure, tracked_files};
 use crate::{python_tools, tools};
 
+/// Top-level keys of a GitHub workflow that YAML 1.1 reads as non-strings. Workflows are read
+/// by GitHub, not by `up` (they are not in ARCH-11's file list), and the trigger key is
+/// always spelled `on`; no other key is exempt from the strict profile.
+pub const WORKFLOW_ROOT_KEYS: &[&str] = &["on"];
+
+/// Strict-load a workflow file, allowing only the top-level `on:` trigger key.
+pub fn load_workflow(
+    path: &std::path::Path,
+) -> Result<serde_json::Value, up_config::yaml::YamlError> {
+    up_config::yaml::load_file_allowing_root_keys(path, WORKFLOW_ROOT_KEYS)
+}
+
 /// Tracked workflow files: `.github/workflows/*.yml` and `*.yaml`, sorted.
 pub fn workflow_files(tracked: impl IntoIterator<Item = String>) -> Vec<String> {
     let mut files: Vec<String> = tracked
@@ -37,7 +49,7 @@ pub fn workflow_files(tracked: impl IntoIterator<Item = String>) -> Vec<String> 
 fn rust_rules(ctx: &Ctx, files: &[String]) -> Vec<String> {
     let mut problems = Vec::new();
     for file in files {
-        match up_config::yaml::load_file(&ctx.root.join(file)) {
+        match load_workflow(&ctx.root.join(file)) {
             Ok(doc) => {
                 for v in check_workflow(&doc) {
                     problems.push(format!(

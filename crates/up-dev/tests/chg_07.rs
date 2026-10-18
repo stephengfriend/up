@@ -62,7 +62,7 @@ fn repo_root() -> PathBuf {
 
 fn load_ci_yml() -> serde_json::Value {
     let path = repo_root().join(".github/workflows/ci.yml");
-    up_config::yaml::load_file(&path)
+    up_dev::workflow_lint::load_workflow(&path)
         .unwrap_or_else(|e| panic!("ci.yml must load: {e}"))
 }
 

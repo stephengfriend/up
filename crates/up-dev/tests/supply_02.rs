@@ -21,7 +21,7 @@ fn fixtures_dir() -> PathBuf {
 }
 
 fn check_file(path: &std::path::Path) -> Vec<Violation> {
-    let doc = up_config::yaml::load_file(path)
+    let doc = up_dev::workflow_lint::load_workflow(path)
         .unwrap_or_else(|e| panic!("{} must load: {e}", path.display()));
     check_workflow(&doc)
 }

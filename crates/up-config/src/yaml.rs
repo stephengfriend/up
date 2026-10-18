@@ -281,6 +281,190 @@ fn cap(message: &str) -> String {
     message.chars().take(MAX_MESSAGE_CHARS).collect()
 }
 
+// ---------------------------------------------------------------------------
+// Plain scalars that are not strings (ARCH-11: non-string keys)
+// ---------------------------------------------------------------------------
+
+/// True when an unquoted scalar resolves to something other than a string under the YAML 1.2
+/// core schema or the YAML 1.1 resolver PyYAML (Ansible) applies: null, booleans (including
+/// `y`/`n`, in any case), integers, floats and timestamps. As a mapping key such a scalar is
+/// ambiguous: `yes` and `true`, or `1` and `01`, are one key to PyYAML and two to the loader.
+/// The check is deliberately a superset of both resolvers; a key that must read as text is
+/// written quoted.
+fn is_non_string_plain(text: &str) -> bool {
+    is_null_or_bool(text) || is_number(text) || is_timestamp(text)
+}
+
+fn is_null_or_bool(text: &str) -> bool {
+    text.is_empty()
+        || text == "~"
+        || ["null", "y", "n", "yes", "no", "on", "off", "true", "false"]
+            .iter()
+            .any(|word| text.eq_ignore_ascii_case(word))
+}
+
+/// Consume `[0-9_]*` and return how many bytes it took.
+fn digits_underscores(b: &[u8]) -> usize {
+    b.iter()
+        .take_while(|c| c.is_ascii_digit() || **c == b'_')
+        .count()
+}
+
+/// An optional exponent (`e`/`E`, optional sign, digits) that must end the input.
+fn exponent_then_end(b: &[u8]) -> bool {
+    if b.is_empty() {
+        return true;
+    }
+    if !matches!(b[0], b'e' | b'E') {
+        return false;
+    }
+    let rest = &b[1..];
+    let rest = match rest.first() {
+        Some(b'+' | b'-') => &rest[1..],
+        _ => rest,
+    };
+    !rest.is_empty() && rest.iter().all(u8::is_ascii_digit)
+}
+
+fn is_number(text: &str) -> bool {
+    let body = text.strip_prefix(['+', '-']).unwrap_or(text);
+    if body.eq_ignore_ascii_case(".inf") || body.eq_ignore_ascii_case(".nan") {
+        return true;
+    }
+    for (prefix, valid) in [
+        (
+            "0x",
+            (|c: u8| c.is_ascii_hexdigit() || c == b'_') as fn(u8) -> bool,
+        ),
+        ("0o", |c| matches!(c, b'0'..=b'7' | b'_')),
+        ("0b", |c| matches!(c, b'0' | b'1' | b'_')),
+    ] {
+        let lower = body.get(..2).map(str::to_ascii_lowercase);
+        if lower.as_deref() == Some(prefix) {
+            let rest = &body.as_bytes()[2..];
+            return !rest.is_empty() && rest.iter().all(|c| valid(*c));
+        }
+    }
+    let b = body.as_bytes();
+    match b.first() {
+        Some(c) if c.is_ascii_digit() => {
+            let lead = digits_underscores(b);
+            let rest = &b[lead..];
+            match rest.first() {
+                None => true,
+                Some(b':') => sexagesimal(rest),
+                Some(b'.') => {
+                    let frac = digits_underscores(&rest[1..]);
+                    exponent_then_end(&rest[1 + frac..])
+                }
+                Some(_) => !rest.is_empty() && exponent_then_end(rest),
+            }
+        }
+        Some(b'.') => {
+            let rest = &b[1..];
+            rest.first().is_some_and(u8::is_ascii_digit) && {
+                let frac = digits_underscores(rest);
+                exponent_then_end(&rest[frac..])
+            }
+        }
+        _ => false,
+    }
+}
+
+/// `(:[0-5]?[0-9])+` with an optional `.[0-9_]*` tail: YAML 1.1 base-60 integers and floats.
+fn sexagesimal(mut b: &[u8]) -> bool {
+    let mut groups = 0;
+    while b.first() == Some(&b':') {
+        b = &b[1..];
+        let n = b.iter().take(2).take_while(|c| c.is_ascii_digit()).count();
+        if n == 0 || (n == 2 && b[0] > b'5') {
+            return false;
+        }
+        b = &b[n..];
+        groups += 1;
+    }
+    groups > 0
+        && match b.first() {
+            None => true,
+            Some(b'.') => b[1..].iter().all(|c| c.is_ascii_digit() || *c == b'_'),
+            Some(_) => false,
+        }
+}
+
+/// Consume between `min` and `max` ASCII digits.
+fn take_digits(b: &[u8], i: &mut usize, min: usize, max: usize) -> bool {
+    let n = b[*i..]
+        .iter()
+        .take(max)
+        .take_while(|c| c.is_ascii_digit())
+        .count();
+    *i += n;
+    n >= min
+}
+
+fn take_byte(b: &[u8], i: &mut usize, want: u8) -> bool {
+    let hit = b.get(*i) == Some(&want);
+    if hit {
+        *i += 1;
+    }
+    hit
+}
+
+fn skip_blanks(b: &[u8], i: &mut usize) -> usize {
+    let n = b[*i..]
+        .iter()
+        .take_while(|c| matches!(**c, b' ' | b'\t'))
+        .count();
+    *i += n;
+    n
+}
+
+/// `YYYY-M-D`, optionally followed by a time and zone: the YAML 1.1 timestamp forms.
+fn is_timestamp(text: &str) -> bool {
+    let b = text.as_bytes();
+    let mut i = 0;
+    if !(take_digits(b, &mut i, 4, 4)
+        && take_byte(b, &mut i, b'-')
+        && take_digits(b, &mut i, 1, 2)
+        && take_byte(b, &mut i, b'-')
+        && take_digits(b, &mut i, 1, 2))
+    {
+        return false;
+    }
+    if i == b.len() {
+        return true;
+    }
+    let separated =
+        take_byte(b, &mut i, b'T') || take_byte(b, &mut i, b't') || skip_blanks(b, &mut i) > 0;
+    if !(separated
+        && take_digits(b, &mut i, 1, 2)
+        && take_byte(b, &mut i, b':')
+        && take_digits(b, &mut i, 2, 2)
+        && take_byte(b, &mut i, b':')
+        && take_digits(b, &mut i, 2, 2))
+    {
+        return false;
+    }
+    if take_byte(b, &mut i, b'.') {
+        take_digits(b, &mut i, 0, usize::MAX);
+    }
+    skip_blanks(b, &mut i);
+    if i == b.len() {
+        return true;
+    }
+    if take_byte(b, &mut i, b'Z') {
+        return i == b.len();
+    }
+    if !(take_byte(b, &mut i, b'+') || take_byte(b, &mut i, b'-')) || !take_digits(b, &mut i, 1, 2)
+    {
+        return false;
+    }
+    if take_byte(b, &mut i, b':') && !take_digits(b, &mut i, 2, 2) {
+        return false;
+    }
+    i == b.len()
+}
+
 /// A mapping or sequence being walked by the pre-scan.
 enum Frame {
     Map {
@@ -305,6 +489,8 @@ enum Slot {
 struct Scan<'a> {
     origin: &'a str,
     limits: &'a Limits,
+    /// Plain top-level keys exempt from the non-string-key rule (workflow profile only).
+    root_keys: &'a [&'a str],
     stack: Vec<Frame>,
     documents: usize,
     nodes: usize,
@@ -490,6 +676,21 @@ impl Scan<'_> {
                         at(span),
                     ));
                 }
+                if style == ScalarStyle::Plain
+                    && is_non_string_plain(text)
+                    && !(self.stack.len() == 1 && self.root_keys.contains(&text))
+                {
+                    return Err(self.located(
+                        |origin, path, line, col| YamlError::NonStringKey {
+                            origin,
+                            path,
+                            line,
+                            col,
+                        },
+                        &map_path,
+                        at(span),
+                    ));
+                }
                 let fresh = match self.stack.last_mut() {
                     Some(Frame::Map {
                         expect_key,
@@ -575,13 +776,14 @@ impl Scan<'_> {
 
 /// Walk the parser events once and refuse anything the strict profile forbids.
 /// Reports the first violation in document order.
-fn prescan(src: &str, origin: &str, limits: &Limits) -> Result<(), YamlError> {
+fn prescan(src: &str, origin: &str, limits: &Limits, root_keys: &[&str]) -> Result<(), YamlError> {
     let mut options = ParserOptions::default();
     options.set_emit_comments(false);
     let mut parser = Parser::new_from_str_with_options(src, options);
     let mut scan = Scan {
         origin,
         limits,
+        root_keys,
         stack: Vec::new(),
         documents: 0,
         nodes: 0,
@@ -701,13 +903,14 @@ fn deserialize_category(e: &serde_saphyr::Error) -> &'static str {
 ///
 /// Runs only after [`prescan`] accepted the document, so it never meets an
 /// anchor, alias, tag, merge key or duplicate key.
-fn path_at(src: &str, limits: &Limits, target: At) -> String {
+fn path_at(src: &str, limits: &Limits, root_keys: &[&str], target: At) -> String {
     let mut options = ParserOptions::default();
     options.set_emit_comments(false);
     let mut parser = Parser::new_from_str_with_options(src, options);
     let mut scan = Scan {
         origin: "",
         limits,
+        root_keys,
         stack: Vec::new(),
         documents: 0,
         nodes: 0,
@@ -767,6 +970,7 @@ fn deserialize_error(
     src: &str,
     origin: &str,
     limits: &Limits,
+    root_keys: &[&str],
     e: &serde_saphyr::Error,
 ) -> YamlError {
     let (line, col) = e
@@ -785,7 +989,7 @@ fn deserialize_error(
     let path = if line == 0 {
         String::new()
     } else {
-        path_at(src, limits, (line, col))
+        path_at(src, limits, root_keys, (line, col))
     };
     YamlError::Deserialize {
         origin: origin.to_string(),
@@ -824,11 +1028,30 @@ pub fn load_str_with(
     origin: &str,
     limits: &Limits,
 ) -> Result<serde_json::Value, YamlError> {
-    from_str_with(src, origin, limits)
+    from_str_with(src, origin, limits, &[])
+}
+
+/// Like [`load_str`], but a plain top-level key spelled exactly as one of `root_keys` is
+/// accepted although it resolves to a non-string in YAML 1.1 (for GitHub workflows, whose
+/// top-level `on:` is such a key). Every other rule, and every other key, stays strict.
+pub fn load_str_allowing_root_keys(
+    src: &str,
+    origin: &str,
+    root_keys: &[&str],
+) -> Result<serde_json::Value, YamlError> {
+    from_str_with(src, origin, &Limits::default(), root_keys)
 }
 
 /// Load a strict YAML file. The size cap is checked before the file is read in full.
 pub fn load_file(path: &Path) -> Result<serde_json::Value, YamlError> {
+    load_file_allowing_root_keys(path, &[])
+}
+
+/// File form of [`load_str_allowing_root_keys`].
+pub fn load_file_allowing_root_keys(
+    path: &Path,
+    root_keys: &[&str],
+) -> Result<serde_json::Value, YamlError> {
     let origin = path.display().to_string();
     let limits = Limits::default();
     let io = |source: std::io::Error| YamlError::Io {
@@ -858,38 +1081,22 @@ pub fn load_file(path: &Path) -> Result<serde_json::Value, YamlError> {
         line: 0,
         col: 0,
     })?;
-    load_str_with(&src, &origin, &limits)
-}
-
-/// Seam for the workflow profile (implemented in the fix commit).
-pub fn load_file_allowing_root_keys(
-    path: &Path,
-    _allowed: &[&str],
-) -> Result<serde_json::Value, YamlError> {
-    load_file(path)
-}
-
-/// Seam for the workflow profile (implemented in the fix commit).
-pub fn load_str_allowing_root_keys(
-    src: &str,
-    origin: &str,
-    _allowed: &[&str],
-) -> Result<serde_json::Value, YamlError> {
-    load_str(src, origin)
+    from_str_with(&src, &origin, &limits, root_keys)
 }
 
 /// Load a strict YAML document into `T`.
 pub fn from_str<T: serde::de::DeserializeOwned>(src: &str, origin: &str) -> Result<T, YamlError> {
-    from_str_with(src, origin, &Limits::default())
+    from_str_with(src, origin, &Limits::default(), &[])
 }
 
 fn from_str_with<T: serde::de::DeserializeOwned>(
     src: &str,
     origin: &str,
     limits: &Limits,
+    root_keys: &[&str],
 ) -> Result<T, YamlError> {
     check_size(src, origin, limits)?;
-    prescan(src, origin, limits)?;
+    prescan(src, origin, limits, root_keys)?;
     serde_saphyr::from_str_with_options::<T>(src, parse_options(limits))
-        .map_err(|e| deserialize_error(src, origin, limits, &e))
+        .map_err(|e| deserialize_error(src, origin, limits, root_keys, &e))
 }

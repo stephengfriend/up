@@ -427,14 +427,12 @@ fn test_arch_11_scalar_non_string_keys_rejected() {
         let err = yaml::load_str(&src, "inline")
             .expect_err(&format!("plain key {key:?} must be refused"));
         assert_eq!(err.kind(), "non-string-key", "{key:?}: got {err:?}");
-        let shown = err.to_string();
-        assert!(
-            shown.contains("line 1"),
-            "{key:?}: position missing: {shown}"
+        // The message is the same for every key, so none of the key text can be in it.
+        assert_eq!(
+            err.to_string(),
+            "inline: non-string key at / (line 1, column 1)",
+            "{key:?}"
         );
-        if !key.is_empty() {
-            assert!(!shown.contains(key), "{key:?} echoed: {shown}");
-        }
     }
 }
 
