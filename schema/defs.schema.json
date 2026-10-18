@@ -94,6 +94,32 @@
     "signer_principal": {
       "type": "string",
       "pattern": "^[A-Za-z0-9._@+-]{1,128}$"
+    },
+    "single_line": {
+      "type": "string",
+      "$comment": "Free text that is only ever matched or compared in memory: no control characters, no NEL, no U+2028 or U+2029. At least one character.",
+      "pattern": "^[^\\u0000-\\u001f\\u007f\\u0085\\u2028\\u2029]+$"
+    },
+    "visibility": {
+      "type": "string",
+      "enum": ["private", "public"]
+    },
+    "root_backend": {
+      "type": "string",
+      "$comment": "Human-session backends (bw) are not valid for root resolution (SEC-02).",
+      "enum": ["sops", "op", "bws", "push", "fake"]
+    },
+    "vault_config": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "default": { "$ref": "#/$defs/vault_name" },
+        "classes": {
+          "type": "object",
+          "propertyNames": { "$ref": "#/$defs/class" },
+          "additionalProperties": { "$ref": "#/$defs/vault_name" }
+        }
+      }
     }
   }
 }

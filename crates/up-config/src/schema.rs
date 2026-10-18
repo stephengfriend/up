@@ -21,9 +21,11 @@ use crate::yaml::{self, YamlError};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Kind {
     Host,
+    Up,
+    Catalog,
 }
 
-const ALL_KINDS: &[Kind] = &[Kind::Host];
+const ALL_KINDS: &[Kind] = &[Kind::Host, Kind::Up, Kind::Catalog];
 
 impl Kind {
     /// Number of kinds; sizes the per-kind validator cache.
@@ -38,6 +40,8 @@ impl Kind {
     pub fn base(&self) -> &'static str {
         match self {
             Kind::Host => "host",
+            Kind::Up => "up",
+            Kind::Catalog => "catalog",
         }
     }
 
@@ -45,12 +49,16 @@ impl Kind {
     pub fn id(&self) -> &'static str {
         match self {
             Kind::Host => "urn:up:schema:host",
+            Kind::Up => "urn:up:schema:up",
+            Kind::Catalog => "urn:up:schema:catalog",
         }
     }
 
     fn index(&self) -> usize {
         match self {
             Kind::Host => 0,
+            Kind::Up => 1,
+            Kind::Catalog => 2,
         }
     }
 }
@@ -108,6 +116,14 @@ pub fn embedded_sources() -> &'static [(&'static str, &'static str)] {
         (
             "host.schema.json",
             include_str!("../../../schema/host.schema.json"),
+        ),
+        (
+            "up.schema.json",
+            include_str!("../../../schema/up.schema.json"),
+        ),
+        (
+            "catalog.schema.json",
+            include_str!("../../../schema/catalog.schema.json"),
         ),
     ]
 }

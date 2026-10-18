@@ -18,7 +18,7 @@ fn load(kind: Kind, rel: &str) -> Value {
 }
 
 /// Hostile values every patterned field must refuse (ARCH-05 negative AC; encoding and empty edges).
-fn hostile_values() -> Vec<(&'static str, String)> {
+fn hostile_values() -> Vec<Named> {
     vec![
         ("path traversal", "../x".to_string()),
         ("command separator", "a;b".to_string()),
@@ -31,36 +31,153 @@ fn hostile_values() -> Vec<(&'static str, String)> {
     ]
 }
 
-/// One patterned field: where it lives in a valid base fixture of `kind`.
+/// How a hostile value is injected at a row's pointer.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Mode {
+    /// Replace the value at the pointer.
+    Value,
+    /// Rename the map key named by the last pointer segment; the violation is at the map.
+    Key,
+}
+
+/// What the field is allowed to contain.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Content {
+    /// Patterned: every hostile value is refused.
+    Patterned,
+    /// Free single-line text matched only in memory: line-breaking, NUL and empty values are
+    /// refused, while `../x`, `a;b` and lookalikes are legitimate content.
+    SingleLine,
+}
+
+/// One string field: where it lives in a valid base fixture of `kind`.
 struct Row {
     kind: Kind,
     base: &'static str,
     pointer: &'static str,
+    mode: Mode,
+    content: Content,
 }
 
-/// Every patterned string field. Later tasks append rows, never rewrite the tests.
+/// Every string field. Later tasks append rows, never rewrite the tests.
 fn rows() -> Vec<Row> {
-    let v = |kind, base, pointer| Row {
+    let row = |kind, base, pointer, mode, content| Row {
         kind,
         base,
         pointer,
+        mode,
+        content,
     };
+    let val = |kind, base, pointer| row(kind, base, pointer, Mode::Value, Content::Patterned);
+    let key = |kind, base, pointer| row(kind, base, pointer, Mode::Key, Content::Patterned);
+    let line = |kind, base, pointer| row(kind, base, pointer, Mode::Value, Content::SingleLine);
+    const HOST: &str = "valid/with-roles.yml";
+    const UP: &str = "valid/full.yml";
+    const CATALOG: &str = "valid/all-backends.yml";
     vec![
-        v(Kind::Host, "valid/with-roles.yml", "/name"),
-        v(Kind::Host, "valid/with-roles.yml", "/instance"),
-        v(Kind::Host, "valid/with-roles.yml", "/host"),
-        v(Kind::Host, "valid/with-roles.yml", "/user"),
-        v(Kind::Host, "valid/with-roles.yml", "/roles/0"),
+        val(Kind::Host, HOST, "/name"),
+        val(Kind::Host, HOST, "/instance"),
+        val(Kind::Host, HOST, "/host"),
+        val(Kind::Host, HOST, "/user"),
+        val(Kind::Host, HOST, "/roles/0"),
+        val(Kind::Up, UP, "/name"),
+        val(Kind::Up, UP, "/remote"),
+        val(Kind::Up, UP, "/visibility"),
+        val(Kind::Up, UP, "/engine/url"),
+        val(Kind::Up, UP, "/engine/version"),
+        val(Kind::Up, UP, "/engine/commit"),
+        val(Kind::Up, UP, "/vault/default"),
+        val(Kind::Up, UP, "/vault/classes/servers"),
+        key(Kind::Up, UP, "/vault/classes/servers"),
+        val(Kind::Up, UP, "/taps/0"),
+        val(Kind::Up, UP, "/mise_backends/0"),
+        val(Kind::Up, UP, "/notify/webhook"),
+        val(Kind::Up, UP, "/notify/heartbeat"),
+        val(Kind::Up, UP, "/privacy/denylist"),
+        val(Kind::Up, UP, "/secrets/root_backend"),
+        val(Kind::Up, UP, "/secrets/user_backend"),
+        val(Kind::Up, UP, "/secrets/classes/servers/root_backend"),
+        key(Kind::Up, UP, "/secrets/classes/servers"),
+        key(Kind::Catalog, CATALOG, "/secrets/smtp_password"),
+        val(Kind::Catalog, CATALOG, "/secrets/smtp_password/op"),
+        val(Kind::Catalog, CATALOG, "/secrets/smtp_password/bw"),
+        val(Kind::Catalog, CATALOG, "/secrets/smtp_password/bws"),
+        val(Kind::Catalog, CATALOG, "/secrets/smtp_password/sops"),
+        line(Kind::Catalog, CATALOG, "/secrets/smtp_password/fake"),
     ]
 }
 
-/// The document with the hostile value applied at the row's pointer.
-fn mutate(row: &Row, hostile: &str) -> Value {
+/// The document with the hostile value applied at the row's pointer, with the pointer and
+/// keyword the violation must carry (`None` keyword: any).
+fn mutate(row: &Row, hostile: &str) -> (Value, String, Option<&'static str>) {
     let mut doc = load(row.kind, row.base);
-    *doc.pointer_mut(row.pointer)
-        .unwrap_or_else(|| panic!("no {} in {}", row.pointer, row.base)) =
-        Value::String(hostile.to_string());
-    doc
+    match row.mode {
+        Mode::Value => {
+            *doc.pointer_mut(row.pointer)
+                .unwrap_or_else(|| panic!("no {} in {}", row.pointer, row.base)) =
+                Value::String(hostile.to_string());
+            (doc, row.pointer.to_string(), None)
+        }
+        Mode::Key => {
+            let (parent, key) = row.pointer.rsplit_once('/').expect("key pointer");
+            let map = doc
+                .pointer_mut(parent)
+                .and_then(Value::as_object_mut)
+                .unwrap_or_else(|| panic!("no map at {parent}"));
+            let value = map.remove(key).expect("key present");
+            map.insert(hostile.to_string(), value);
+            (doc, parent.to_string(), Some("propertyNames"))
+        }
+    }
+}
+
+/// A named hostile value.
+type Named = (&'static str, String);
+
+/// Values that are refused for this row, and values that must still validate.
+fn split_hostile(row: &Row) -> (Vec<Named>, Vec<Named>) {
+    let (refused, legit): (Vec<_>, Vec<_>) = hostile_values().into_iter().partition(|(what, _)| {
+        row.content == Content::Patterned
+            || matches!(
+                *what,
+                "embedded newline" | "nul" | "line separator" | "trailing newline" | "empty"
+            )
+    });
+    (refused, legit)
+}
+
+/// Every hostile value is refused with a violation naming the row's field.
+fn assert_hostile_rejected(kind: Kind) {
+    let mut checked = 0;
+    for row in rows().iter().filter(|r| r.kind == kind) {
+        let (refused, legit) = split_hostile(row);
+        for (what, hostile) in refused {
+            let (doc, pointer, keyword) = mutate(row, &hostile);
+            let violations = schema::validate(row.kind, &doc)
+                .err()
+                .unwrap_or_else(|| panic!("{what} accepted at {}", row.pointer));
+            assert!(
+                violations
+                    .iter()
+                    .any(|v| v.pointer == pointer && keyword.is_none_or(|k| v.keyword == k)),
+                "{what} at {}: no violation naming it, got {:?}",
+                row.pointer,
+                pointers(&violations)
+            );
+            checked += 1;
+        }
+        for (what, value) in legit {
+            let (doc, _, _) = mutate(row, &value);
+            if let Err(v) = schema::validate(row.kind, &doc) {
+                panic!(
+                    "{what} is legitimate free text at {} but was refused: {:?}",
+                    row.pointer,
+                    pointers(&v)
+                );
+            }
+        }
+    }
+    assert!(checked > 0, "no rows for {}", kind.base());
 }
 
 fn pointers(violations: &[Violation]) -> Vec<String> {
@@ -79,19 +196,7 @@ fn test_arch_05_host_valid_fixtures_pass() {
 
 #[test]
 fn test_arch_05_hostile_values_rejected_host() {
-    for row in rows().iter().filter(|r| r.kind == Kind::Host) {
-        for (what, hostile) in hostile_values() {
-            let doc = mutate(row, &hostile);
-            let violations = schema::validate(row.kind, &doc)
-                .expect_err(&format!("{what} accepted at {}", row.pointer));
-            assert!(
-                violations.iter().any(|v| v.pointer == row.pointer),
-                "{what} at {}: no violation naming it, got {:?}",
-                row.pointer,
-                pointers(&violations)
-            );
-        }
-    }
+    assert_hostile_rejected(Kind::Host);
 }
 
 #[test]
@@ -186,4 +291,182 @@ fn test_arch_05_patterns_ascii_anchored() {
         }
     }
     assert!(patterns >= 20, "only {patterns} patterns found in defs");
+}
+
+fn assert_valid_fixtures(kind: Kind, names: &[&str]) {
+    for name in names {
+        let doc = load(kind, name);
+        if let Err(v) = schema::validate(kind, &doc) {
+            panic!("{name} must validate: {:?}", pointers(&v));
+        }
+    }
+}
+
+fn violations_of(kind: Kind, rel: &str) -> Vec<Violation> {
+    schema::validate(kind, &load(kind, rel)).expect_err(&format!("{rel} must be refused"))
+}
+
+#[test]
+fn test_arch_05_up_valid_fixtures_pass() {
+    assert_valid_fixtures(Kind::Up, &["valid/full.yml", "valid/minimal.yml"]);
+}
+
+#[test]
+fn test_arch_05_catalog_valid_fixtures_pass() {
+    assert_valid_fixtures(Kind::Catalog, &["valid/all-backends.yml"]);
+}
+
+#[test]
+fn test_arch_05_hostile_values_rejected_up() {
+    assert_hostile_rejected(Kind::Up);
+}
+
+#[test]
+fn test_arch_05_hostile_values_rejected_catalog() {
+    assert_hostile_rejected(Kind::Catalog);
+}
+
+#[test]
+fn test_arch_05_literal_webhook_url_rejected() {
+    // OPS-03: a literal URL in notify.webhook is refused; only a catalog reference passes.
+    let violations = violations_of(Kind::Up, "invalid/literal-webhook-url.yml");
+    assert!(
+        violations
+            .iter()
+            .any(|v| v.pointer == "/notify/webhook" && v.keyword == "pattern"),
+        "got {:?}",
+        pointers(&violations)
+    );
+}
+
+#[test]
+fn test_arch_05_plaintext_denylist_rejected() {
+    // GRD-11: privacy.denylist is the path of a sops file, never a plaintext list.
+    let violations = violations_of(Kind::Up, "invalid/plaintext-denylist.yml");
+    assert!(
+        violations
+            .iter()
+            .any(|v| v.pointer == "/privacy/denylist" && v.keyword == "type"),
+        "got {:?}",
+        pointers(&violations)
+    );
+}
+
+#[test]
+fn test_arch_05_human_session_root_backend_rejected() {
+    // SEC-02: a human-session backend (bw) cannot resolve secrets for root.
+    let violations = violations_of(Kind::Up, "invalid/human-session-root-backend.yml");
+    assert!(
+        violations
+            .iter()
+            .any(|v| v.pointer == "/secrets/root_backend" && v.keyword == "enum"),
+        "got {:?}",
+        pointers(&violations)
+    );
+    // The same refusal holds for a per-class override.
+    let mut doc = load(Kind::Up, "valid/full.yml");
+    doc["secrets"]["classes"]["servers"]["root_backend"] = json!("bw");
+    let violations = schema::validate(Kind::Up, &doc).expect_err("bw refused for a class");
+    assert!(
+        violations
+            .iter()
+            .any(|v| v.pointer == "/secrets/classes/servers/root_backend"),
+        "got {:?}",
+        pointers(&violations)
+    );
+}
+
+#[test]
+fn test_arch_05_unknown_nested_key_rejected() {
+    let violations = violations_of(Kind::Up, "invalid/unknown-nested-key.yml");
+    assert!(
+        violations
+            .iter()
+            .any(|v| v.pointer == "/engine" && v.keyword == "additionalProperties"),
+        "got {:?}",
+        pointers(&violations)
+    );
+}
+
+#[test]
+fn test_arch_05_mirror_accepts_only_empty_object() {
+    let mut doc = load(Kind::Up, "valid/full.yml");
+    doc["mirror"] = json!({ "apt": "https://mirror.example.com" });
+    let violations = schema::validate(Kind::Up, &doc).expect_err("mirror keys refused in v1");
+    assert!(
+        violations
+            .iter()
+            .any(|v| v.pointer == "/mirror" && v.keyword == "additionalProperties"),
+        "got {:?}",
+        pointers(&violations)
+    );
+}
+
+#[test]
+fn test_arch_05_rotation_days_bounds() {
+    let mut doc = load(Kind::Up, "valid/full.yml");
+    for ok in [json!(1), json!(90), json!(365)] {
+        doc["rotation_days"] = ok.clone();
+        schema::validate(Kind::Up, &doc).unwrap_or_else(|v| panic!("{ok} refused: {v:?}"));
+    }
+    for bad in [
+        json!(0),
+        json!(366),
+        json!(-1),
+        json!(1.5),
+        json!("90"),
+        json!(null),
+    ] {
+        doc["rotation_days"] = bad.clone();
+        let violations = schema::validate(Kind::Up, &doc)
+            .err()
+            .unwrap_or_else(|| panic!("{bad} accepted"));
+        assert!(
+            violations.iter().any(|v| v.pointer == "/rotation_days"),
+            "{bad}: got {:?}",
+            pointers(&violations)
+        );
+    }
+}
+
+#[test]
+fn test_arch_05_lists_reject_duplicates() {
+    let mut doc = load(Kind::Up, "valid/full.yml");
+    doc["taps"] = json!(["example-login/tools", "example-login/tools"]);
+    let violations = schema::validate(Kind::Up, &doc).expect_err("duplicate taps refused");
+    assert!(
+        violations
+            .iter()
+            .any(|v| v.pointer == "/taps" && v.keyword == "uniqueItems"),
+        "got {:?}",
+        pointers(&violations)
+    );
+}
+
+#[test]
+fn test_arch_05_catalog_entry_needs_a_backend() {
+    let violations = violations_of(Kind::Catalog, "invalid/empty-entry.yml");
+    assert!(
+        violations
+            .iter()
+            .any(|v| v.pointer == "/secrets/smtp_password" && v.keyword == "minProperties"),
+        "got {:?}",
+        pointers(&violations)
+    );
+}
+
+#[test]
+fn test_arch_05_catalog_fake_length_boundary() {
+    let mut doc = load(Kind::Catalog, "valid/all-backends.yml");
+    doc["secrets"]["smtp_password"]["fake"] = Value::String("x".repeat(256));
+    schema::validate(Kind::Catalog, &doc).expect("256 characters validate");
+    doc["secrets"]["smtp_password"]["fake"] = Value::String("x".repeat(257));
+    let violations = schema::validate(Kind::Catalog, &doc).expect_err("257 refused");
+    assert!(
+        violations
+            .iter()
+            .any(|v| v.pointer == "/secrets/smtp_password/fake" && v.keyword == "maxLength"),
+        "got {:?}",
+        pointers(&violations)
+    );
 }

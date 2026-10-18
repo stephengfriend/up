@@ -1,0 +1,4 @@
+# expect: /secrets/smtp_password minProperties
+schema_version: 1
+secrets:
+  smtp_password: {}

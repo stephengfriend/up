@@ -1,0 +1,8 @@
+schema_version: 1
+name: example
+remote: https://github.com/example-login/example.git
+visibility: public
+engine:
+  url: https://github.com/example-login/up.git
+  version: 0.0.1-rc.1
+  commit: "0000000000000000000000000000000000000000"
