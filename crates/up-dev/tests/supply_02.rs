@@ -153,6 +153,12 @@ fn test_supply_02_pull_request_target_head_checkout_fails() {
         "prt-head-ref-spacing.yml",
         "prt-list-trigger.yml",
         "prt-refs-pull.yml",
+        // CR/WR-01: other ways to name fork code or its merge with base.
+        "prt-merge-commit-sha.yml",
+        "prt-pr-number-ref.yml",
+        "prt-event-number-ref.yml",
+        "prt-bracket-head.yml",
+        "workflow-run-head-sha.yml",
     ] {
         assert_exactly(name, "pr-target-head-checkout");
     }
