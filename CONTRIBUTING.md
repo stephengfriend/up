@@ -47,7 +47,7 @@ Third-party actions are pinned by commit SHA and the default token is read-only 
 CI binaries are pinned with a SHA-256 per target in `versions.yml`. Python CI tools are hash-locked in `tools/ci-requirements.txt`; regenerate it with:
 
 ```sh
-"$(cargo run --locked --quiet -p up-dev -- tool-path uv)" pip compile --no-config --universal --generate-hashes --python-version 3.13 -o tools/ci-requirements.txt tools/ci-requirements.in
+"$(cargo run --locked --quiet -p up-dev -- tool-path uv)" pip compile --no-config --universal --generate-hashes --only-binary :all: --python-version 3.13 -o tools/ci-requirements.txt tools/ci-requirements.in
 ```
 
 Both are updated by hand until `up versions bump` lands in M8. Renovate opens pull requests for GitHub Actions and Cargo only, and never merges (SUPPLY-06).
