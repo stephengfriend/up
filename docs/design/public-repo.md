@@ -25,6 +25,8 @@ The public `up` repo is a complete product. Today it has one user, but anyone ca
 | Agent adapters | `CLAUDE.md`, `.claude/commands/` | Thin, generated Claude Code wrappers |
 | Project files | `README.md`, `CONTRIBUTING.md`, `SECURITY.md`, `CHANGELOG.md`, `LICENSE`, `.up-engine` | Standard files; `.up-engine` marks the repo for guard |
 
+M0 enforces the skeleton subset of this table (PUB-01): every path except `up.sh`, `docs/guides/`, `docs/reference/` and `CHANGELOG.md`, which are enforced from M4.
+
 `template/` is a minimal working instance: `up.yml` with `engine.version`, `engine.commit` and `visibility: private`; `.up/allowed_signers` and `.up/recipients`; an example inventory using aliases; starter dotfiles; an example catalog on the `fake` backend; `.sops.yaml` rules; `CODEOWNERS`; a Renovate config with automerge off; instance CI; and its own `AGENTS.md`.
 
 ## Three ways to create an instance

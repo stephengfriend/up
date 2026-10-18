@@ -47,10 +47,24 @@ pub const M0_PATHS: &[RequiredPath] = &[
     file("docs/glossary.md"),
     file("docs/open-questions.md"),
     file("docs/design/threat-model.md"),
+    file("LICENSE"),
+    file(".up-engine"),
+    file("defaults.yml"),
+    file("versions.yml"),
     dir("docs/design/"),
     dir("docs/reviews/"),
     dir("prompts/"),
     dir(".claude/commands/"),
+    dir("crates/up/"),
+    dir("ansible/"),
+    dir("chezmoi/"),
+    dir("images/"),
+    dir("containers/"),
+    dir("schema/"),
+    dir("toolchain/"),
+    dir("hooks/"),
+    dir("guard/"),
+    dir("template/"),
 ];
 
 /// Contents-table paths enforced from M4, not M0 (documented here, not
@@ -101,14 +115,59 @@ pub fn check_paths(tracked: &BTreeSet<String>, required: &[RequiredPath]) -> Vec
     messages
 }
 
-/// Stub: the real PUB-10 check lands in the GREEN step.
-pub fn check_license(_text: &str) -> Vec<String> {
-    Vec::new()
+/// The MIT grant and its condition paragraph (whitespace-normalized on use).
+const MIT_PERMISSION: &str = "Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the \"Software\"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions: The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.";
+
+/// The MIT warranty disclaimer (whitespace-normalized on use).
+const MIT_WARRANTY: &str = "THE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.";
+
+/// Collapse every run of whitespace to one space and trim.
+fn normalize(text: &str) -> String {
+    text.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// True for `Copyright (c) <4 digits> <non-empty holder>`.
+fn is_copyright_line(line: &str) -> bool {
+    let Some(rest) = line.trim().strip_prefix("Copyright (c) ") else {
+        return false;
+    };
+    let Some((year, holder)) = rest.split_once(' ') else {
+        return false;
+    };
+    year.len() == 4 && year.bytes().all(|b| b.is_ascii_digit()) && !holder.trim().is_empty()
+}
+
+/// PUB-10: the LICENSE text must be the MIT license. Each failure message
+/// starts with `PUB-10:` and names LICENSE.
+pub fn check_license(text: &str) -> Vec<String> {
+    if text.trim().is_empty() {
+        return vec!["PUB-10: LICENSE is empty".to_string()];
+    }
+    let mut messages = Vec::new();
+    if text.lines().next().map(str::trim) != Some("MIT License") {
+        messages.push("PUB-10: LICENSE must start with the line \"MIT License\"".to_string());
+    }
+    if !text.lines().any(is_copyright_line) {
+        messages
+            .push("PUB-10: LICENSE has no line like \"Copyright (c) <year> <holder>\"".to_string());
+    }
+    let normalized = normalize(text);
+    if !normalized.contains(&normalize(MIT_PERMISSION)) {
+        messages.push("PUB-10: LICENSE permission text differs from the MIT license".to_string());
+    }
+    if !normalized.contains(&normalize(MIT_WARRANTY)) {
+        messages.push("PUB-10: LICENSE warranty text differs from the MIT license".to_string());
+    }
+    messages
 }
 
 pub fn run(ctx: &Ctx, _args: &[String]) -> CheckResult {
     let tracked = tracked_files(&ctx.root)?;
-    let messages = check_paths(&tracked, M0_PATHS);
+    let mut messages = check_paths(&tracked, M0_PATHS);
+    match std::fs::read_to_string(ctx.root.join("LICENSE")) {
+        Ok(text) => messages.extend(check_license(&text)),
+        Err(_) => messages.push("PUB-10: LICENSE unreadable".to_string()),
+    }
     if messages.is_empty() {
         Ok(())
     } else {
