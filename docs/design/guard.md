@@ -54,7 +54,7 @@ Output is always redacted: findings name the file, line and rule, never the matc
 | Field | Type | Required | Constraint | Source | Status |
 | --- | --- | --- | --- | --- | --- |
 | `schema_version` | integer | yes | const `1` | ARCH-05, ARCH-10 | spec |
-| `denylist` | list | yes | unique single-line strings, 3 to 256 characters each, that guard blocks | GRD-08; Personal-data sources | proposed |
+| `denylist` | list | yes | unique single-line strings, 3 to 256 characters each, that guard blocks | GRD-08; Personal-data sources | owner |
 
 ## Requirements
 

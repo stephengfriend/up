@@ -45,18 +45,19 @@ The answers file holds no secret values (PUB-05). It is the input to `up init --
 | --- | --- | --- | --- | --- | --- |
 | `schema_version` | integer | yes | const `1` | ARCH-05, ARCH-10 | spec |
 | `name` | string | yes | name | Wizard questions; ARCH-05 | spec |
-| `login` | string | yes | login; required so identical answers give identical instances | PUB-04 | proposed |
-| `visibility` | string | no | `private` or `public`, default `private` | PUB-05 | proposed |
-| `secrets` | object | yes | key `backends` | Wizard asks for secrets backends | proposed |
-| `secrets.backends` | list | yes | unique entries, at least one, each one of `sops`, `op`, `bw`, `bws`, `fake` | Wizard asks for secrets backends | proposed |
-| `vault` | object | no | same shape as `vault` in `up.yml` | Wizard asks for vaults | proposed |
-| `signers` | list | yes | at least two entries, each an object with `principal` and `key`, both required: primary and backup | Wizard asks for signing keys; SEC-15 and the manual path | proposed |
-| `signers[].principal` | string | yes | signer principal | SEC-15 | proposed |
-| `signers[].key` | string | yes | SSH signing key | SEC-15 | proposed |
-| `host` | object | yes | keys `alias`, `user`, `roles`, all required | Wizard asks for the first host with its roles | proposed |
-| `host.alias` | string | yes | host alias | Wizard | proposed |
-| `host.user` | string | yes | user | Wizard | proposed |
-| `host.roles` | list | yes | unique role entries, at least one | Wizard | proposed |
+| `login` | string | yes | login; required so identical answers give identical instances | PUB-04 | owner |
+| `visibility` | string | no | `private` or `public`, default `private` | PUB-05 | owner |
+| `secrets` | object | yes | key `backends` | Wizard asks for secrets backends | owner |
+| `secrets.backends` | list | yes | unique entries, at least one, each one of `sops`, `op`, `bw`, `bws`, `fake` | Wizard asks for secrets backends | owner |
+| `vault` | object | no | same shape as `vault` in `up.yml` | Wizard asks for vaults | owner |
+| `signers` | list | yes | at least two entries, each an object with `principal`, `key` and `role`, all required; exactly one entry has role `primary` and at least one has role `backup` | Wizard asks for signing keys; SEC-15 and the manual path | owner |
+| `signers[].principal` | string | yes | signer principal | SEC-15 | owner |
+| `signers[].key` | string | yes | SSH signing key | SEC-15 | owner |
+| `signers[].role` | string | yes | `primary` or `backup` | SEC-15 | owner |
+| `host` | object | yes | keys `alias`, `user`, `roles`, all required | Wizard asks for the first host with its roles | owner |
+| `host.alias` | string | yes | host alias | Wizard | owner |
+| `host.user` | string | yes | user | Wizard | owner |
+| `host.roles` | list | yes | unique role entries, at least one | Wizard | owner |
 
 ## AI assets
 
