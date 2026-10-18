@@ -328,7 +328,10 @@ fn test_arch_11_deserialize_error_does_not_echo_values() {
         let debug = format!("{err:?}");
         assert!(!shown.contains(token), "Display echoes {token}: {shown}");
         assert!(!debug.contains(token), "Debug echoes {token}: {debug}");
-        assert!(shown.contains(category), "category `{category}` missing: {shown}");
+        assert!(
+            shown.contains(category),
+            "category `{category}` missing: {shown}"
+        );
         if !path.is_empty() {
             assert!(shown.contains(path), "path `{path}` missing: {shown}");
         }

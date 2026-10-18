@@ -125,7 +125,9 @@ fn test_pub_09_depends_on_unknown_doc_fails() {
 #[test]
 fn test_pub_09_unknown_front_matter_field_fails() {
     let f = only_error("front-matter-unknown-field", "front-matter");
-    assert!(f.message.contains("owner"), "{}", f.message);
+    // ARCH-11: the message names the error kind, not the offending key's text.
+    assert!(f.message.contains("unknown field"), "{}", f.message);
+    assert!(!f.message.contains("owner"), "{}", f.message);
 }
 
 #[test]
@@ -300,7 +302,9 @@ fn test_pub_09_exemption_schema_version_must_be_1() {
 fn test_pub_09_exemptions_cover_only_the_negative_ac_rule() {
     // D1-14: no baseline or allowlist for any other rule; an `rfc_keyword` list is refused.
     let f = only_error("exemption-other-rule", "exemption");
-    assert!(f.message.contains("rfc_keyword"), "{}", f.message);
+    // ARCH-11: the message names the error kind, not the offending key's text.
+    assert!(f.message.contains("unknown field"), "{}", f.message);
+    assert!(!f.message.contains("rfc_keyword"), "{}", f.message);
 }
 
 #[test]

@@ -120,7 +120,12 @@ pub enum YamlError {
     #[error("{}", self.render())]
     Deserialize {
         origin: String,
-        message: String,
+        /// JSON pointer to the containing key; never the offending key or value itself.
+        path: String,
+        /// Fixed error category; never text taken from the source.
+        category: &'static str,
+        /// For a missing field, the field's name from the target type (not from the source).
+        field: Option<&'static str>,
         line: usize,
         col: usize,
     },
@@ -132,7 +137,7 @@ pub enum YamlError {
     },
 }
 
-/// Longest library message kept in a Syntax or Deserialize error.
+/// Longest library message kept in a Syntax error.
 const MAX_MESSAGE_CHARS: usize = 200;
 
 impl YamlError {
@@ -214,12 +219,21 @@ impl YamlError {
                 message, line, col, ..
             } => format!("syntax error: {}{}", escape(message), position(*line, *col)),
             YamlError::Deserialize {
-                message, line, col, ..
-            } => format!(
-                "does not match the expected shape: {}{}",
-                escape(message),
-                position(*line, *col)
-            ),
+                path,
+                category,
+                field,
+                line,
+                col,
+                ..
+            } => {
+                let named = field.map(|f| format!(" `{f}`")).unwrap_or_default();
+                located(
+                    &format!("does not match the expected shape: {category}{named}"),
+                    path,
+                    *line,
+                    *col,
+                )
+            }
             YamlError::Io { source, .. } => {
                 format!("cannot read file: {}", escape(&source.to_string()))
             }
@@ -649,7 +663,112 @@ fn parse_options(limits: &Limits) -> serde_saphyr::Options {
     options
 }
 
-fn deserialize_error(origin: &str, e: &serde_saphyr::Error) -> YamlError {
+/// A fixed category for a deserialization failure. Derived from the error's
+/// variant only: nothing from the library's message (which can quote scalars
+/// and keys from the source) is carried over.
+fn deserialize_category(e: &serde_saphyr::Error) -> &'static str {
+    use serde_saphyr::Error as E;
+    match e {
+        E::SerdeUnknownField { .. } => "unknown field",
+        E::SerdeUnknownVariant { .. } | E::SerdeVariantId { .. } | E::TaggedEnumMismatch { .. } => {
+            "unknown variant"
+        }
+        E::SerdeMissingField { .. } => "missing field",
+        E::DuplicateMappingKey { .. } => "duplicate key",
+        E::SerdeInvalidType { .. }
+        | E::Unexpected { .. }
+        | E::InvalidScalar { .. }
+        | E::NullIntoString { .. }
+        | E::InvalidBooleanStrict { .. }
+        | E::InvalidCharNull { .. }
+        | E::InvalidCharNotSingleScalar { .. }
+        | E::UnexpectedValueForUnit { .. }
+        | E::ExpectedEmptyMappingForUnitStruct { .. }
+        | E::ExternallyTaggedEnumExpectedScalarOrMapping { .. }
+        | E::UnexpectedValueForUnitEnumVariant { .. } => "invalid type",
+        E::SerdeInvalidValue { .. }
+        | E::SerdeInvalidLength { .. }
+        | E::QuotingRequired { .. }
+        | E::NonFiniteFloat { .. } => "invalid value",
+        E::AliasError { error, .. } => deserialize_category(error),
+        _ => "other",
+    }
+}
+
+/// The JSON pointer of the node that starts at `target`, for an error raised
+/// there. A mapping key resolves to its mapping (never to the key's own text),
+/// so an unknown key is not echoed. Empty when no node starts there.
+///
+/// Runs only after [`prescan`] accepted the document, so it never meets an
+/// anchor, alias, tag, merge key or duplicate key.
+fn path_at(src: &str, limits: &Limits, target: At) -> String {
+    let mut options = ParserOptions::default();
+    options.set_emit_comments(false);
+    let mut parser = Parser::new_from_str_with_options(src, options);
+    let mut scan = Scan {
+        origin: "",
+        limits,
+        stack: Vec::new(),
+        documents: 0,
+        nodes: 0,
+        root_done: false,
+    };
+    while let Some(Ok((event, span))) = parser.next_event() {
+        let here = at(&span);
+        let found = |scan: &Scan| match scan.slot() {
+            Slot::Root => String::new(),
+            Slot::Key { map_path } => map_path,
+            Slot::Value { path } => path,
+        };
+        let is_map = matches!(event, Event::MappingStart(..));
+        match event {
+            Event::DocumentStart(..) => scan.documents += 1,
+            Event::Scalar(text, style, anchor, tag) => {
+                if here == target {
+                    return found(&scan);
+                }
+                if scan
+                    .scalar(
+                        &text,
+                        style,
+                        anchor,
+                        tag.is_some().then(|| tag_position(&span)),
+                        &span,
+                    )
+                    .is_err()
+                {
+                    break;
+                }
+            }
+            Event::SequenceStart(_, anchor, tag) | Event::MappingStart(_, anchor, tag) => {
+                if here == target {
+                    return found(&scan);
+                }
+                if scan
+                    .open(
+                        is_map,
+                        anchor,
+                        tag.is_some().then(|| tag_position(&span)),
+                        &span,
+                    )
+                    .is_err()
+                {
+                    break;
+                }
+            }
+            Event::SequenceEnd | Event::MappingEnd => scan.close(),
+            _ => {}
+        }
+    }
+    String::new()
+}
+
+fn deserialize_error(
+    src: &str,
+    origin: &str,
+    limits: &Limits,
+    e: &serde_saphyr::Error,
+) -> YamlError {
     let (line, col) = e
         .location()
         .map(|l| (l.line() as usize, l.column() as usize))
@@ -663,9 +782,19 @@ fn deserialize_error(origin: &str, e: &serde_saphyr::Error) -> YamlError {
             col,
         };
     }
+    let path = if line == 0 {
+        String::new()
+    } else {
+        path_at(src, limits, (line, col))
+    };
     YamlError::Deserialize {
         origin: origin.to_string(),
-        message: cap(&e.to_string()),
+        path,
+        category: deserialize_category(e),
+        field: match e {
+            serde_saphyr::Error::SerdeMissingField { field, .. } => Some(field),
+            _ => None,
+        },
         line,
         col,
     }
@@ -745,5 +874,5 @@ fn from_str_with<T: serde::de::DeserializeOwned>(
     check_size(src, origin, limits)?;
     prescan(src, origin, limits)?;
     serde_saphyr::from_str_with_options::<T>(src, parse_options(limits))
-        .map_err(|e| deserialize_error(origin, &e))
+        .map_err(|e| deserialize_error(src, origin, limits, &e))
 }
