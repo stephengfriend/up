@@ -48,6 +48,7 @@ pub const M0_PATHS: &[RequiredPath] = &[
     file("docs/open-questions.md"),
     file("docs/design/threat-model.md"),
     file("LICENSE"),
+    file("SECURITY.md"),
     file(".up-engine"),
     file("defaults.yml"),
     file("versions.yml"),
@@ -168,9 +169,56 @@ pub const SECURITY_SECTIONS: &[&str] = &[
     "Embargo and disclosure",
 ];
 
-/// PUB-12 (stub, filled in by the GREEN commit).
-pub fn check_security_md(_text: &str) -> Vec<String> {
-    Vec::new()
+/// Characters stripped from both ends of a whitespace-separated token before
+/// the email-shape test (markdown and prose punctuation).
+const EMAIL_TRIM: &[char] = &[
+    '<', '>', '(', ')', '[', ']', '{', '}', ',', ';', ':', '"', '\'', '`',
+];
+
+/// True when `token` looks like `local@domain.tld`: something before the
+/// `@`, and a `.` with characters on both sides after it.
+fn looks_like_email(token: &str) -> bool {
+    let token = token.trim_matches(EMAIL_TRIM);
+    let Some((local, domain)) = token.split_once('@') else {
+        return false;
+    };
+    if local.is_empty() {
+        return false;
+    }
+    let chars: Vec<char> = domain.chars().collect();
+    (1..chars.len().saturating_sub(1)).any(|i| chars[i] == '.')
+}
+
+/// PUB-12: SECURITY.md must carry the three H2 sections, each with body
+/// text, and must not name an email address (reports go through GitHub
+/// private vulnerability reporting). A section counts only for a line that is
+/// exactly `## <title>`. The address is never echoed in a message.
+pub fn check_security_md(text: &str) -> Vec<String> {
+    let lines: Vec<&str> = text.lines().collect();
+    let mut messages = Vec::new();
+    for title in SECURITY_SECTIONS {
+        let heading = format!("## {title}");
+        let Some(start) = lines.iter().position(|l| *l == heading) else {
+            messages.push(format!(
+                "PUB-12: SECURITY.md is missing section \"{title}\""
+            ));
+            continue;
+        };
+        let has_body = lines[start + 1..]
+            .iter()
+            .take_while(|l| !l.starts_with('#'))
+            .any(|l| !l.trim().is_empty());
+        if !has_body {
+            messages.push(format!("PUB-12: SECURITY.md section \"{title}\" is empty"));
+        }
+    }
+    if text.split_whitespace().any(looks_like_email) {
+        messages.push(
+            "PUB-12: SECURITY.md contains an email address; use GitHub private vulnerability reporting"
+                .to_string(),
+        );
+    }
+    messages
 }
 
 pub fn run(ctx: &Ctx, _args: &[String]) -> CheckResult {
@@ -179,6 +227,10 @@ pub fn run(ctx: &Ctx, _args: &[String]) -> CheckResult {
     match std::fs::read_to_string(ctx.root.join("LICENSE")) {
         Ok(text) => messages.extend(check_license(&text)),
         Err(_) => messages.push("PUB-10: LICENSE unreadable".to_string()),
+    }
+    match std::fs::read_to_string(ctx.root.join("SECURITY.md")) {
+        Ok(text) => messages.extend(check_security_md(&text)),
+        Err(_) => messages.push("PUB-12: SECURITY.md unreadable".to_string()),
     }
     if messages.is_empty() {
         Ok(())
