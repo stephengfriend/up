@@ -1,0 +1,8 @@
+# expect: workflow-shape
+name: fixture
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs: {}

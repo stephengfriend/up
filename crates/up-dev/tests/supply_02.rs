@@ -105,3 +105,118 @@ fn test_supply_02_unpinned_action_fails() {
         v[0].message
     );
 }
+
+#[test]
+fn test_supply_02_unpinned_action_boundaries() {
+    for name in [
+        "unpinned-short-sha.yml",
+        "unpinned-sha-39.yml",
+        "unpinned-sha-41.yml",
+        "unpinned-sha-uppercase.yml",
+        "unpinned-docker-tag.yml",
+        "unpinned-reusable-branch.yml",
+    ] {
+        assert_exactly(name, "unpinned-action");
+    }
+    for name in [
+        "local-action-pass.yml",
+        "docker-digest-pass.yml",
+        "reusable-pinned-pass.yml",
+    ] {
+        let v = check_fixture(name);
+        assert!(v.is_empty(), "{name} must pass:\n{}", render(&v));
+    }
+}
+
+#[test]
+fn test_supply_02_missing_permissions_fails() {
+    assert_exactly("permissions-missing.yml", "token-permissions");
+}
+
+#[test]
+fn test_supply_02_write_default_token_fails() {
+    assert_exactly("permissions-write-all.yml", "token-permissions");
+    assert_exactly("permissions-contents-write.yml", "token-permissions");
+    for name in [
+        "permissions-empty-pass.yml",
+        "permissions-read-all-pass.yml",
+    ] {
+        let v = check_fixture(name);
+        assert!(v.is_empty(), "{name} must pass:\n{}", render(&v));
+    }
+}
+
+#[test]
+fn test_supply_02_pull_request_target_head_checkout_fails() {
+    for name in [
+        "prt-head-sha-checkout.yml",
+        "prt-head-ref-spacing.yml",
+        "prt-list-trigger.yml",
+        "prt-refs-pull.yml",
+    ] {
+        assert_exactly(name, "pr-target-head-checkout");
+    }
+    let v = check_fixture("prt-without-head-checkout-pass.yml");
+    assert!(
+        v.iter().all(|v| v.rule != "pr-target-head-checkout"),
+        "prt-without-head-checkout-pass.yml must not trip the rule:\n{}",
+        render(&v)
+    );
+}
+
+#[test]
+fn test_supply_02_self_hosted_runner_fails() {
+    for name in [
+        "self-hosted-string.yml",
+        "self-hosted-array.yml",
+        "self-hosted-labels.yml",
+        "self-hosted-matrix.yml",
+        "self-hosted-matrix-include.yml",
+        "self-hosted-mixed-case.yml",
+    ] {
+        assert_exactly(name, "self-hosted-runner");
+    }
+}
+
+#[test]
+fn test_supply_02_empty_workflow_fails() {
+    assert_exactly("empty-jobs.yml", "workflow-shape");
+}
+
+#[test]
+fn test_supply_02_every_fixture_has_expectation() {
+    const RULES: [&str; 5] = [
+        "unpinned-action",
+        "token-permissions",
+        "pr-target-head-checkout",
+        "self-hosted-runner",
+        "workflow-shape",
+    ];
+    let names = fixture_names();
+    assert!(
+        names.len() >= 20,
+        "expected 20 or more fixtures, found {}",
+        names.len()
+    );
+    let mut covered: Vec<String> = Vec::new();
+    for name in &names {
+        let expect = expectation(name);
+        if expect == "pass" {
+            let v = check_fixture(name);
+            assert!(v.is_empty(), "{name} must pass:\n{}", render(&v));
+        } else {
+            assert!(
+                RULES.contains(&expect.as_str()),
+                "{name}: unknown rule `{expect}` in the expect header"
+            );
+            assert_exactly(name, &expect);
+            covered.push(expect);
+        }
+    }
+    for rule in RULES {
+        assert!(
+            covered.iter().any(|c| c == rule),
+            "no fixture targets rule {rule}"
+        );
+    }
+}

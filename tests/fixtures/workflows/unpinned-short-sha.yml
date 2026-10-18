@@ -1,0 +1,13 @@
+# expect: unpinned-action
+name: fixture
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e
+      - run: echo ok
