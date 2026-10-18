@@ -170,16 +170,23 @@ pub fn run_with(
         }
     }
 
-    // Schema validation runs even after rule findings, so one run shows both.
-    let bin_dir = setup(ctx)?;
-    let mut cmd: Command = python_tools::tool_command(&bin_dir, "check-jsonschema");
-    cmd.args(["--builtin-schema", "vendor.renovate"])
-        .args(&files)
-        .current_dir(&ctx.root);
-    match cmd.status() {
-        Ok(status) if status.success() => {}
-        Ok(_) => problems.push("renovate-check: schema findings above".to_string()),
-        Err(e) => problems.push(format!("renovate-check: cannot run check-jsonschema: {e}")),
+    // Schema validation runs even after rule findings, so one run shows both; a failed venv
+    // installation is one more problem and must not hide the findings above.
+    match setup(ctx) {
+        Ok(bin_dir) => {
+            let mut cmd: Command = python_tools::tool_command(&bin_dir, "check-jsonschema");
+            cmd.args(["--builtin-schema", "vendor.renovate"])
+                .args(&files)
+                .current_dir(&ctx.root);
+            match cmd.status() {
+                Ok(status) if status.success() => {}
+                Ok(_) => problems.push("renovate-check: schema findings above".to_string()),
+                Err(e) => {
+                    problems.push(format!("renovate-check: cannot run check-jsonschema: {e}"));
+                }
+            }
+        }
+        Err(failure) => problems.extend(failure.messages),
     }
 
     if problems.is_empty() {
