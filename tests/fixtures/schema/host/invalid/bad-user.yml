@@ -1,0 +1,6 @@
+# expect: /user pattern
+schema_version: 1
+name: example
+instance: https://github.com/example-login/example.git
+host: host-01
+user: "a;b"

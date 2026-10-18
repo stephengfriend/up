@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:up:schema:defs",
+  "title": "Shared value constraints (ARCH-05)",
+  "$comment": "Every pattern is anchored, ASCII only and free of lookaround. Changes need a schema_version bump and an ARCH-10 migration.",
+  "$defs": {
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{0,30}$"
+    },
+    "login": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9]+(-[A-Za-z0-9]+)*$",
+      "maxLength": 39
+    },
+    "host_alias": {
+      "type": "string",
+      "pattern": "^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$"
+    },
+    "user": {
+      "type": "string",
+      "pattern": "^[a-z_][a-z0-9_-]{0,31}$"
+    },
+    "role": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]{0,63}$"
+    },
+    "class": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]{0,30}$"
+    },
+    "git_commit": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "engine_version": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\\.[0-9A-Za-z-]+)*)?$"
+    },
+    "instance_remote": {
+      "type": "string",
+      "pattern": "^(https://github\\.com/|ssh://git@github\\.com/|git@github\\.com:)[A-Za-z0-9]+(-[A-Za-z0-9]+)*/[a-z][a-z0-9-]{0,30}\\.git$"
+    },
+    "engine_url": {
+      "type": "string",
+      "pattern": "^https://github\\.com/[A-Za-z0-9]+(-[A-Za-z0-9]+)*/[A-Za-z0-9_-]{1,100}\\.git$"
+    },
+    "catalog_ref": {
+      "type": "string",
+      "pattern": "^catalog:[a-z][a-z0-9_]{0,63}$"
+    },
+    "catalog_key": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]{0,63}$"
+    },
+    "vault_name": {
+      "type": "string",
+      "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$"
+    },
+    "sops_path": {
+      "type": "string",
+      "pattern": "^secrets/([a-z0-9][a-z0-9_-]*/)*[a-z0-9][a-z0-9_-]*\\.sops\\.yaml$",
+      "maxLength": 255
+    },
+    "sops_ref": {
+      "type": "string",
+      "pattern": "^secrets/([a-z0-9][a-z0-9_-]*/)*[a-z0-9][a-z0-9_-]*\\.sops\\.yaml#[a-z][a-z0-9_]{0,63}$",
+      "maxLength": 255
+    },
+    "op_ref": {
+      "type": "string",
+      "pattern": "^op://(\\{\\{ vault \\}\\}|[A-Za-z][A-Za-z0-9_-]{0,63})/[A-Za-z0-9][A-Za-z0-9_-]{0,63}/[A-Za-z0-9][A-Za-z0-9_-]{0,63}$"
+    },
+    "bw_ref": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "bws_ref": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "homebrew_tap": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]{0,38}/[a-z0-9][a-z0-9-]{0,99}$"
+    },
+    "mise_backend": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{0,30}$"
+    },
+    "ssh_signing_key": {
+      "type": "string",
+      "pattern": "^(sk-ssh-ed25519@openssh\\.com|ssh-ed25519) [A-Za-z0-9+/]{68,}={0,2}$"
+    },
+    "signer_principal": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._@+-]{1,128}$"
+    }
+  }
+}

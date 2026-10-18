@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:up:schema:host",
+  "title": "host.yml (ARCH-05, ARCH-09)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "name", "instance", "host", "user"],
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "name": { "$ref": "urn:up:schema:defs#/$defs/name" },
+    "instance": { "$ref": "urn:up:schema:defs#/$defs/instance_remote" },
+    "host": { "$ref": "urn:up:schema:defs#/$defs/host_alias" },
+    "user": { "$ref": "urn:up:schema:defs#/$defs/user" },
+    "roles": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "$ref": "urn:up:schema:defs#/$defs/role" }
+    }
+  }
+}
