@@ -117,6 +117,12 @@ pub fn check_paths(tracked: &BTreeSet<String>, required: &[RequiredPath]) -> Vec
     messages
 }
 
+/// GRD-03 / SUPPLY-02 (CR-01): no tracked gitleaks configuration or ignore file, at any depth
+/// (seam; implemented in the fix commit).
+pub fn check_no_gitleaks_config(_tracked: &BTreeSet<String>) -> Vec<String> {
+    Vec::new()
+}
+
 /// The MIT grant and its condition paragraph (whitespace-normalized on use).
 const MIT_PERMISSION: &str = "Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the \"Software\"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions: The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.";
 
@@ -265,6 +271,7 @@ pub fn check_agents_md(text: &str) -> Vec<String> {
 pub fn run(ctx: &Ctx, _args: &[String]) -> CheckResult {
     let tracked = tracked_files(&ctx.root)?;
     let mut messages = check_paths(&tracked, M0_PATHS);
+    messages.extend(check_no_gitleaks_config(&tracked));
     match std::fs::read_to_string(ctx.root.join("LICENSE")) {
         Ok(text) => messages.extend(check_license(&text)),
         Err(_) => messages.push("PUB-10: LICENSE unreadable".to_string()),

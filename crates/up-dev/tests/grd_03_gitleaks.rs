@@ -159,3 +159,36 @@ fn test_grd_03_scan_environment_is_cleared() {
         );
     }
 }
+
+// ---- repo-files: no tracked gitleaks config or ignore file (CR-01) ----
+
+use std::collections::BTreeSet;
+use up_dev::repo_files::check_no_gitleaks_config;
+
+fn set(paths: &[&str]) -> BTreeSet<String> {
+    paths.iter().map(|p| (*p).to_string()).collect()
+}
+
+#[test]
+fn test_grd_03_repo_files_clean_tree_passes() {
+    let tracked = set(&["README.md", "tools/lint.sh", "docs/gitleaks-notes.md"]);
+    assert_eq!(check_no_gitleaks_config(&tracked), Vec::<String>::new());
+}
+
+#[test]
+fn test_grd_03_repo_files_rejects_gitleaks_toml_and_ignore_at_any_depth() {
+    for bad in [
+        ".gitleaks.toml",
+        ".gitleaksignore",
+        "gitleaks.toml",
+        "gitleaks-extra.toml",
+        "sub/dir/.gitleaks.toml",
+        "sub/.gitleaksignore",
+        "tools/gitleaks.local.toml",
+    ] {
+        let messages = check_no_gitleaks_config(&set(&["README.md", bad]));
+        assert_eq!(messages.len(), 1, "{bad}: {messages:?}");
+        assert!(messages[0].contains(bad), "{bad}: {messages:?}");
+        assert!(messages[0].starts_with("GRD-03:"), "{bad}: {messages:?}");
+    }
+}
