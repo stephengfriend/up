@@ -74,7 +74,31 @@ fn run_external(name: &str, mut cmd: Command, problems: &mut Vec<String>) {
     }
 }
 
+/// The pinned external tools the second to fourth layers need.
+pub struct ExternalTools {
+    pub actionlint: std::path::PathBuf,
+    pub shellcheck: std::path::PathBuf,
+    /// `bin/` of the hash-locked Python venv (zizmor, check-jsonschema).
+    pub bin_dir: std::path::PathBuf,
+}
+
+fn setup_tools(ctx: &Ctx) -> Result<ExternalTools, Failure> {
+    Ok(ExternalTools {
+        actionlint: tools::ensure_tool(ctx, "actionlint")?,
+        shellcheck: tools::ensure_tool(ctx, "shellcheck")?,
+        bin_dir: python_tools::ensure_venv(ctx)?,
+    })
+}
+
 pub fn run(ctx: &Ctx, _args: &[String]) -> CheckResult {
+    run_with(ctx, setup_tools)
+}
+
+/// [`run`] with the tool installation injected, so tests can fail it.
+pub fn run_with(
+    ctx: &Ctx,
+    setup: impl FnOnce(&Ctx) -> Result<ExternalTools, Failure>,
+) -> CheckResult {
     let files = workflow_files(tracked_files(&ctx.root)?);
     if files.is_empty() {
         // A pass over zero workflows would be vacuous.
@@ -82,9 +106,11 @@ pub fn run(ctx: &Ctx, _args: &[String]) -> CheckResult {
     }
     let mut problems = rust_rules(ctx, &files);
 
-    let actionlint = tools::ensure_tool(ctx, "actionlint")?;
-    let shellcheck = tools::ensure_tool(ctx, "shellcheck")?;
-    let bin_dir = python_tools::ensure_venv(ctx)?;
+    let ExternalTools {
+        actionlint,
+        shellcheck,
+        bin_dir,
+    } = setup(ctx)?;
 
     let mut cmd = Command::new(&actionlint);
     cmd.args(["-no-color", "-pyflakes="])

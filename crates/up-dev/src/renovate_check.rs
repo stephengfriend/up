@@ -149,6 +149,14 @@ pub fn select_config_files(
 }
 
 pub fn run(ctx: &Ctx, _args: &[String]) -> CheckResult {
+    run_with(ctx, python_tools::ensure_venv)
+}
+
+/// [`run`] with the venv installation injected, so tests can fail it.
+pub fn run_with(
+    ctx: &Ctx,
+    setup: impl FnOnce(&Ctx) -> Result<std::path::PathBuf, Failure>,
+) -> CheckResult {
     let files = select_config_files(tracked_files(&ctx.root)?).map_err(Failure::one)?;
     let mut problems = Vec::new();
     for file in &files {
@@ -163,7 +171,7 @@ pub fn run(ctx: &Ctx, _args: &[String]) -> CheckResult {
     }
 
     // Schema validation runs even after rule findings, so one run shows both.
-    let bin_dir = python_tools::ensure_venv(ctx)?;
+    let bin_dir = setup(ctx)?;
     let mut cmd: Command = python_tools::tool_command(&bin_dir, "check-jsonschema");
     cmd.args(["--builtin-schema", "vendor.renovate"])
         .args(&files)
