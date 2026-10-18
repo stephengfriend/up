@@ -117,10 +117,24 @@ pub fn check_paths(tracked: &BTreeSet<String>, required: &[RequiredPath]) -> Vec
     messages
 }
 
-/// GRD-03 / SUPPLY-02 (CR-01): no tracked gitleaks configuration or ignore file, at any depth
-/// (seam; implemented in the fix commit).
-pub fn check_no_gitleaks_config(_tracked: &BTreeSet<String>) -> Vec<String> {
-    Vec::new()
+/// GRD-03 / SUPPLY-02 (CR-01): the credential scan uses an engine-owned config, so a tracked
+/// gitleaks config or ignore file (`.gitleaks.toml`, `.gitleaksignore`, `gitleaks*.toml`) at
+/// any depth can only be an attempt to narrow the scan, or be mistaken for the real one.
+pub fn check_no_gitleaks_config(tracked: &BTreeSet<String>) -> Vec<String> {
+    tracked
+        .iter()
+        .filter(|path| {
+            let name = path.rsplit('/').next().unwrap_or(path);
+            name == ".gitleaks.toml"
+                || name == ".gitleaksignore"
+                || (name.starts_with("gitleaks") && name.ends_with(".toml"))
+        })
+        .map(|path| {
+            format!(
+                "GRD-03: {path} is a gitleaks config or ignore file; the scan uses an engine-owned config and a human records any exception"
+            )
+        })
+        .collect()
 }
 
 /// The MIT grant and its condition paragraph (whitespace-normalized on use).
