@@ -48,7 +48,7 @@ This folder is the specification. It is written so a person or a coding agent ca
 
 **Acceptance criteria.** Each requirement lists one or more `AC:` lines, each a single checkable statement, ideally an automated test. `(manual)` marks one verified by hand and recorded in the PR. `(negative)` marks one that proves a malicious or invalid input is refused. Every requirement whose text involves root, the network or a credential has at least one negative AC.
 
-**Front matter.** Every design doc starts with YAML front matter: `title`, `status`, `prefix`, `milestones`, `depends_on`.
+**Front matter.** Every design doc (`docs/design/*.md`) starts with YAML front matter: `title`, `status` (`draft` or `accepted`), `prefix` (`none` for docs without requirements), `milestones` and `depends_on`; other docs carry `title` and `status`.
 
 **Placeholders.** `<you>` is the engine owner on GitHub; `<login>` is the GitHub login discovered on a host; `<name>` is the instance's project name (default `fleet`); `<host>`, `<class>`, `<device>` as they read. Example addresses use documentation ranges.
 

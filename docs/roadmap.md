@@ -23,7 +23,7 @@ Kubernetes, Talos and Flatcar are out of the engine's scope (D-38).
 
 ## M0: Foundations
 
-- Delivers: PUB-01 (skeleton paths only), PUB-09, PUB-10, PUB-12, SUPPLY-02, ARCH-05, ARCH-11, CHG-07 (lint stage only).
+- Delivers: PUB-01 (skeleton paths only), PUB-09, PUB-10, PUB-12, PUB-13, SUPPLY-02, SUPPLY-06 (engine Renovate config and its CI check), ARCH-05, ARCH-11, CHG-07 (lint stage only).
 - Scope: engine repo with `docs/` (threat model included), `AGENTS.md`, `CLAUDE.md`, `LICENSE`, `SECURITY.md`, `CONTRIBUTING.md`, `.up-engine`; Rust crate skeleton; JSON Schemas with value patterns; spec checker; CI workflow lint; engine rulesets and push protection; two hardware signing keys.
 - Exit criteria:
   - Engine CI is green: cargo test, shellcheck, yamllint, ansible-lint, gitleaks, workflow lint, spec checker.
@@ -60,7 +60,7 @@ Goal: on macOS and Ubuntu, the one-liner verifies and runs the signed binary, an
 
 ## M4: Onboarding and first release
 
-- Delivers: PUB-01 (complete), PUB-02 to PUB-08, PUB-11, PUB-13, CLI-10, CLI-11, CLI-12, CHG-01, CHG-02, SUPPLY-06; `up init`, `up self`, `up release`.
+- Delivers: PUB-01 (complete), PUB-02 to PUB-08, PUB-11, CLI-10, CLI-11, CLI-12, CHG-01, CHG-02, SUPPLY-06 (template Renovate config); `up init`, `up self`, `up release`.
 - Exit criteria:
   - (manual) A fresh GitHub account creates a working private instance by each of the three paths.
   - Engine `v0.1.0` is released and signed locally with `up release`, and your instance pins it with `up self update`.
@@ -88,7 +88,7 @@ Goal: on macOS and Ubuntu, the one-liner verifies and runs the signed binary, an
 
 ## M8: Hardening, public instances and 1.0
 
-- Delivers: CHG-07 (all stages), CHG-08, IMG-12, GRD-12; `up versions`; Renovate in the engine and template; scheduled VM tests; public-instance support.
+- Delivers: CHG-07 (all stages), CHG-08, IMG-12, GRD-12; `up versions`; Renovate managers for `versions.yml` and the hash-locked requirements; scheduled VM tests; public-instance support.
 - Exit criteria:
   - Every MUST requirement's ACs pass.
   - A public test instance passes guard with personal data only in sops files.

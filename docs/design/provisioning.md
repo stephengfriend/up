@@ -8,7 +8,7 @@ depends_on: [architecture, trust, supply-chain, secrets, bootstrap]
 
 # Imaging and provisioning
 
-All provisioning paths (stock OS with cloud-init or an installer, baked image, netboot) are rendered from the instance inventory and end in `up`. Baking is `up` run inside the image build, so an image leaves the factory with everything installed and each tool's own cache and state in place; `up` manages no caches. Templates live in `engine:images/`; an instance MAY override them per class.
+All provisioning paths (stock OS with cloud-init or an installer, baked image, netboot) are rendered from the instance inventory and end in `up`. Baking is `up` run inside the image build, so an image leaves the factory with everything installed and each tool's own cache and state in place; `up` manages no caches. Templates live in `engine:images/`; an instance can override them per class.
 
 Kubernetes, Talos and Flatcar are out of scope for the engine. Clusters are built with instance roles like any other software.
 

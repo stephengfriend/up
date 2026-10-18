@@ -84,7 +84,7 @@ Unattended with none of these: exit `1` with nothing changed.
 
 ### 2. Find the instance
 
-1. `--repo <url>`: `https://` or `ssh://` (or scp-style) only. Unattended runs MUST pass this; render always does.
+1. `--repo <url>`: `https://` or `ssh://` (or scp-style) only. Unattended runs have to pass this (BOOT-07); render always does.
 2. `--name <name>`: `<login>/<name>`.
 3. With an API credential: repos **owned by** the login (not collaborator or organization repos) that carry the discovery topic. The topic is a hint, never authorization. One match: confirm interactively. Several: ask.
 4. Without an API credential: try `<login>/<default name>` and confirm interactively.

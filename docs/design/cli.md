@@ -67,7 +67,7 @@ Optional, on any host. It installs push tooling (a hardware-backed push key, SSH
 - **CLI-04** Every command MUST support `--help`, and `up help` MUST list built-in and instance commands.
   - AC: A test runs `--help` for every command and checks exit `0`.
 - **CLI-05** `up help`, `up host`, `up guard` and `up doctor` MUST work offline and without sudo.
-  - AC: They pass in a container with networking disabled and no sudo.
+  - AC: (negative) They pass in a container with networking disabled and no sudo.
 - **CLI-06** `up ansible --` and `up chezmoi --` MUST pass arguments and exit codes through unchanged, with the instance's inventory, roles path and source dir set.
   - AC: `up ansible -- --list-hosts all` lists the test inventory; a failing playbook's exit code is returned as is.
 - **CLI-07** Commands that need a role's tooling MUST exit `1` naming the role when it is missing.

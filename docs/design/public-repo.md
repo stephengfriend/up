@@ -68,7 +68,7 @@ The answers file holds no secret values (PUB-05). It is the input to `up init --
 
 ## The spec as a buildable plan
 
-Every requirement has an ID, MUST/SHOULD/MAY wording, and acceptance criteria written as tests. Requirements that run as root, fetch from the network or handle a credential carry at least one negative AC. A checker in CI keeps the spec honest; `prompts/plan-from-spec.md` turns it into milestones, issues and tasks, and `prompts/implement-requirement.md` builds one ID at a time.
+Every requirement has an ID, RFC 2119 keyword wording, and acceptance criteria written as tests. Requirements that run as root, fetch from the network or handle a credential carry at least one negative AC. A checker in CI keeps the spec honest: it fails on the uppercase RFC 2119 keywords outside requirement bullets and warns, without failing, on the lowercase words "never" and "only" there, which is how PUB-09's "flag" is applied. Requirements that the keyword rule flags although they take no root, network or credential input are listed with a reason in `docs/spec-exemptions.yml`, and a human reviews every change to that file. `prompts/plan-from-spec.md` turns it into milestones, issues and tasks, and `prompts/implement-requirement.md` builds one ID at a time.
 
 ## Requirements
 
@@ -76,6 +76,7 @@ Every requirement has an ID, MUST/SHOULD/MAY wording, and acceptance criteria wr
   - AC: A CI check asserts each path exists, with the M0 subset enforced from M0.
 - **PUB-02** `template/` MUST be a working instance that converges in a container with the `fake` backend and a test signer set.
   - AC: Engine CI creates an instance from `template/` and converges it.
+  - AC: (negative) A template commit signed by a key outside the test signer set is refused by the converge.
 - **PUB-03** `docs/guides/manual-setup.md` MUST let a person create an instance without the wizard or an agent.
   - AC: Code blocks marked `sh test` run in CI against a scratch directory; (manual) a fresh GitHub account completes the guide before the first release.
 - **PUB-04** `up init` MUST run interactively and from `--answers`, validate input against `schema/answers.schema.json`, and produce identical instances for identical answers.
@@ -94,6 +95,7 @@ Every requirement has an ID, MUST/SHOULD/MAY wording, and acceptance criteria wr
   - AC: `LICENSE` exists and is detected by GitHub's license check.
 - **PUB-11** `template/AGENTS.md` MUST explain how an agent operates an instance using the engine's prompts, including that it cannot sign.
   - AC: Covered by the PUB-06 check run against `template/`.
+  - AC: (negative) Removing the cannot-sign statement from template/AGENTS.md fails CI.
 - **PUB-12** `SECURITY.md` MUST state the private reporting channel, supported versions, and the embargo and disclosure process.
   - AC: A CI check asserts the three sections exist.
 - **PUB-13** `AGENTS.md` MUST state that agents never hold signing keys or secrets-backend sessions, never bypass guard, and never change signers, recipients or guard exceptions.

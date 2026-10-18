@@ -38,5 +38,6 @@ A configuration-management tool with a `security` role and no security requireme
   - AC: (negative) A modified installed profile is reported by `doctor`.
 - **HARD-07** Privileged events MUST be retained by auditd (Linux) or the unified log (macOS) for at least 30 days.
   - AC: A `sudo` event from a VM test is found in the retained audit log.
+  - AC: (negative) Removing or shortening the audit retention configuration makes up doctor exit 1 naming the setting.
 - **HARD-08** The `docker` role MUST default to rootless Docker or Podman on servers and MUST add users to the `docker` group only when an explicit variable is set; `doctor` MUST warn on group membership.
   - AC: (negative) A server converge without the variable leaves the `docker` group empty.
