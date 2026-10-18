@@ -282,8 +282,45 @@ fn runner_labels(job: &Value) -> Result<Vec<String>, String> {
     Ok(all)
 }
 
-/// SUPPLY-02 allows no self-hosted runners; a runner that cannot be proven
-/// GitHub-hosted (runner group, non-static expression) is refused too.
+/// Whether `label` is a GitHub-hosted runner label as GitHub documents them: `ubuntu-latest`,
+/// `ubuntu-slim`, `ubuntu-<YY>.<MM>[-arm]`, `macos-latest`, `macos-<N>[-intel|-large|-xlarge]`,
+/// `macos-latest[-large|-xlarge]`, `windows-latest`, `windows-<N>[-arm]`. Case-insensitive; no
+/// trimming, because a label with stray whitespace is ambiguous. Any other label (including
+/// `self-hosted`, `linux` and custom names) can be carried by a self-hosted runner, so it is
+/// not proven GitHub-hosted.
+pub fn is_github_hosted_label(label: &str) -> bool {
+    let label = label.to_ascii_lowercase();
+    if label == "ubuntu-slim" {
+        return true;
+    }
+    let mut parts = label.splitn(3, '-');
+    let (Some(family), Some(version)) = (parts.next(), parts.next()) else {
+        return false;
+    };
+    let suffix = parts.next();
+    let number = |s: &str| !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit());
+    match family {
+        "ubuntu" => {
+            let image = version == "latest"
+                || version
+                    .split_once('.')
+                    .is_some_and(|(year, month)| number(year) && number(month));
+            image && matches!(suffix, None | Some("arm"))
+        }
+        "macos" => {
+            (version == "latest" || number(version))
+                && matches!(suffix, None | Some("intel" | "large" | "xlarge"))
+        }
+        "windows" => {
+            (version == "latest" || number(version)) && matches!(suffix, None | Some("arm"))
+        }
+        _ => false,
+    }
+}
+
+/// SUPPLY-02 allows no self-hosted runners. Every label must be a GitHub-hosted label
+/// ([`is_github_hosted_label`]); anything else, and a runner that cannot be resolved at all
+/// (runner group, non-static expression), is refused. One violation per job.
 fn check_self_hosted(doc: &Value, out: &mut Vec<Violation>) {
     let Some(jobs) = doc.get("jobs").and_then(Value::as_object) else {
         return;
@@ -292,14 +329,28 @@ fn check_self_hosted(doc: &Value, out: &mut Vec<Violation>) {
         let location = format!("jobs.{id}.runs-on");
         match runner_labels(job) {
             Ok(labels) => {
+                let mut problems = Vec::new();
                 if labels
                     .iter()
                     .any(|l| l.trim().eq_ignore_ascii_case("self-hosted"))
                 {
+                    problems.push("job can run on a `self-hosted` runner".to_string());
+                }
+                for label in &labels {
+                    if !label.trim().eq_ignore_ascii_case("self-hosted")
+                        && !is_github_hosted_label(label)
+                    {
+                        problems.push(format!(
+                            "label `{}` is not a GitHub-hosted runner label",
+                            label.trim()
+                        ));
+                    }
+                }
+                if !problems.is_empty() {
                     out.push(Violation {
                         rule: RULE_SELF_HOSTED,
                         location,
-                        message: "job can run on a `self-hosted` runner".to_string(),
+                        message: problems.join("; "),
                     });
                 }
             }
